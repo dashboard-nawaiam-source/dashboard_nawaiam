@@ -142,10 +142,17 @@
     function render(d) {
       document.getElementById('mes').textContent = '';
       const ctx = document.getElementById('chart').getContext('2d');
-      const labels = ['Total ventas', 'Promedio por factura', 'Cantidad facturas'];
-      const values = [d.totalVentas, d.promedioPorFactura, d.cantidadFacturas];
 
-      // Normalizar para comparación visual
+      const dimEntries = Object.entries(d.dimensiones || {});
+      const labels = ['Total ventas', ...dimEntries.map(([dim]) => dim), 'Promedio por factura', 'Cantidad facturas'];
+      const values = [d.totalVentas, ...dimEntries.map(([, v]) => v), d.promedioPorFactura, d.cantidadFacturas];
+      const colors = [
+        '#0ea5a4',
+        ...dimEntries.map((_, i) => `hsl(${200 + i * 40}, 70%, 55%)`),
+        '#f97316',
+        '#60a5fa'
+      ];
+
       const max = Math.max(...values.map(v => Math.abs(v) || 0));
       const scaled = values.map(v => max ? (v / max) * 100 : 0);
 
@@ -158,15 +165,11 @@
           datasets: [{
             label: 'Comparación (normalizada)',
             data: scaled,
-            backgroundColor: ['#0ea5a4', '#f97316', '#60a5fa']
+            backgroundColor: colors
           }]
         },
         options: {
           responsive: true,
-          interaction: {
-            mode: 'nearest',
-            intersect: false
-          },
           scales: {
             y: { beginAtZero: true, ticks: { callback: v => v + '%' } }
           },
@@ -177,13 +180,8 @@
                 label: ctx => {
                   const idx = ctx.dataIndex;
                   const real = values[idx];
-                  if (idx === 0) {
-                    return `${labels[idx]}: ${formatMoney(real)}`;
-                  } else if (idx === 1) {
-                    return `${labels[idx]}: ${formatMoney(real)}`;
-                  } else {
-                    return `${labels[idx]}: ${Math.round(real)} facturas`;
-                  }
+                  if (idx === labels.length - 1) return `Cantidad: ${Math.round(real)} facturas`;
+                  return formatMoney(real);
                 }
               }
             }
@@ -191,7 +189,7 @@
         }
       });
 
-      const filaDimensiones = Object.entries(d.dimensiones || {})
+      const filaDimensiones = dimEntries
         .map(([dim, valor]) => `
           <tr class="dim-row">
             <td>&nbsp;&nbsp;↳ ${dim}</td>
@@ -215,7 +213,7 @@
           <td>${d.cantidadFacturas}</td>
         </tr>
       `;
-    }
+}
 
     (async () => {
       await cargarMesesYAños();
