@@ -11,20 +11,16 @@
     .mes-selector { margin-bottom:24px; display:flex; gap:12px; align-items:center }
     .mes-selector label { font-weight:600; font-size:14px }
     .mes-selector select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:4px; font-size:14px; cursor:pointer; min-width:200px }
-    .total { font-size:16px; font-weight:600; margin-bottom:24px }
-
-    /* Grid de charts por empresa */
-    #chartsContainer { display:grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap:24px; margin-bottom:32px }
-    .empresa-block { border:1px solid #e2e8f0; border-radius:8px; padding:16px; background:#fafafa }
-    .empresa-block h3 { margin:0 0 4px 0; font-size:15px; color:#0f172a }
-    .empresa-block .empresa-total { font-size:13px; color:#64748b; margin-bottom:12px }
-    .empresa-block canvas { width:100% !important; height:220px !important }
-
-    /* Tabla resumen */
+    .total { font-size:16px; font-weight:600; margin-bottom:16px }
     .data-table { width: 100%; border-collapse: collapse; }
     .data-table th { background: #f1f5f9; padding: 8px; text-align: left; border: 1px solid #e2e8f0; font-weight: 600; font-size: 12px; }
     .data-table td { padding: 8px; border: 1px solid #e2e8f0; font-size: 14px; }
     .data-table tr:nth-child(even) { background: #f8fafc; }
+
+    .empresa-block { margin-bottom:32px }
+    .empresa-block h3 { font-size:15px; font-weight:600; margin-bottom:4px; color:#0f172a }
+    .empresa-block .empresa-subtotal { font-size:13px; color:#64748b; margin-bottom:8px }
+    .empresa-block canvas { max-width:100%; height:260px }
   </style>
   <script src="../components/auth.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
@@ -33,7 +29,7 @@
   <nav-bar-custom></nav-bar-custom>
   <div class="card">
     <h1>Empresas</h1>
-
+    
     <div class="mes-selector">
       <label for="mesSelect">Período:</label>
       <select id="mesSelect">
@@ -43,10 +39,8 @@
 
     <div id="total" class="total">Cargando...</div>
 
-    <!-- Un gráfico por empresa -->
-    <div id="chartsContainer"></div>
+    <div id="empresaCharts"></div>
 
-    <!-- Tabla resumen -->
     <table class="data-table">
       <thead>
         <tr>
@@ -56,45 +50,16 @@
           <th>% de Ventas</th>
         </tr>
       </thead>
-      <tbody id="tablaEmpresas"></tbody>
+      <tbody id="tablaEmpresas">
+      </tbody>
     </table>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
+    // Verificar autenticación
     if (!Auth.isAuthenticated()) {
       window.location.href = '/login';
-    }
-
-    // Paleta de colores para dimensiones (consistente entre empresas)
-    const DIMENSION_COLORS = [
-      '#0ea5a4', '#f97316', '#60a5fa', '#22c55e', '#a78bfa',
-      '#f43f5e', '#facc15', '#34d399', '#fb923c', '#818cf8'
-    ];
-    const dimColorMap = {};
-    let colorIdx = 0;
-
-    function getDimColor(dim) {
-      if (!dimColorMap[dim]) {
-        dimColorMap[dim] = DIMENSION_COLORS[colorIdx % DIMENSION_COLORS.length];
-        colorIdx++;
-      }
-      return dimColorMap[dim];
-    }
-
-    const EMPRESA_DISPLAY = {
-      'nawaiam sa': 'Argentina',
-      'nawaiam españa': 'España',
-      'tu primera pega spa': 'Chile',
-    };
-    const ORDEN_EMPRESAS = ['Argentina', 'España', 'Chile', 'Otros'];
-
-    function mapEmpresa(empresa) {
-      return EMPRESA_DISPLAY[empresa?.trim().toLowerCase()] || 'Otros';
-    }
-
-    function formatMoney(v) {
-      return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(v);
     }
 
     async function cargarMesesYAños() {
@@ -103,25 +68,24 @@
         const json = await res.json();
         const mesesActual = json.data.mesesActual || [];
         const años = json.data.años || [];
-
+        
         const mesSelect = document.getElementById('mesSelect');
         mesSelect.innerHTML = '';
-
-        const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-
+        
         mesesActual.forEach(mes => {
           const option = document.createElement('option');
           option.value = `mes:${mes}`;
           const [mesNum, año] = mes.split('-');
+          const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
           option.textContent = `${mesesNombres[parseInt(mesNum) - 1]} ${año}`;
           mesSelect.appendChild(option);
         });
 
         if (mesesActual.length > 0 && años.length > 0) {
-          const sep = document.createElement('option');
-          sep.disabled = true;
-          sep.textContent = 'Acumulados Anuales:';
-          mesSelect.appendChild(sep);
+          const separator = document.createElement('option');
+          separator.disabled = true;
+          separator.textContent = 'Acumulados Anuales:';
+          mesSelect.appendChild(separator);
         }
 
         años.forEach(año => {
@@ -130,10 +94,15 @@
           option.textContent = `${año}`;
           mesSelect.appendChild(option);
         });
-
-        if (mesesActual.length > 0) mesSelect.value = `mes:${mesesActual[0]}`;
+        
+        if (mesesActual.length > 0) {
+          mesSelect.value = `mes:${mesesActual[0]}`;
+        }
       } catch (e) {
-        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return; }
+        if (e.message === 'AUTH_REQUIRED') {
+          window.location.href = '/login';
+          return;
+        }
         console.error('Error cargando meses y años:', e);
       }
     }
@@ -150,81 +119,94 @@
         const json = await res.json();
         return json.data;
       } catch(e) {
-        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return null; }
+        if (e.message === 'AUTH_REQUIRED') {
+          window.location.href = '/login';
+          return null;
+        }
         console.error(e);
         return null;
       }
     }
 
-    // Guardar instancias de Chart para destruirlas al re-renderizar
-    const chartInstances = {};
+    function mapEmpresa(empresa) {
+      const cleaned = empresa?.trim().toLowerCase() || '';
+      switch(cleaned) {
+        case 'nawaiam sa':          return 'Argentina';
+        case 'nawaiam españa':      return 'España';
+        case 'tu primera pega spa': return 'Chile';
+        default:                    return 'Otros';
+      }
+    }
+
+    function formatMoney(v) {
+      return new Intl.NumberFormat('es-AR', {
+        style: 'currency',
+        currency: 'ARS'
+      }).format(v);
+    }
+
+    const DIM_COLORS = [
+      '#22c55e', '#60a5fa', '#f97316', '#a78bfa',
+      '#f43f5e', '#facc15', '#34d399', '#fb923c'
+    ];
+
+    let chartInstances = [];
 
     async function render(mes, año) {
       const resultado = await fetchData(mes, año);
       if (!resultado) return;
 
       // Destruir charts anteriores
-      Object.values(chartInstances).forEach(c => c.destroy());
-      Object.keys(chartInstances).forEach(k => delete chartInstances[k]);
-      // Reset color map para que sea consistente entre renders
-      Object.keys(dimColorMap).forEach(k => delete dimColorMap[k]);
-      colorIdx = 0;
+      chartInstances.forEach(c => c.destroy());
+      chartInstances = [];
 
-      // Agrupar datos por empresa mapeada
+      // Agrupar por empresa mapeada, acumulando dimensiones
       const empresaMap = {};
       resultado.datos.forEach(f => {
         const region = mapEmpresa(f.empresa);
         if (!empresaMap[region]) {
-          empresaMap[region] = { cantidadFacturas: 0, totalVentas: 0, dimensiones: {} };
+          empresaMap[region] = { ingresos: 0, ventas: 0, dimensiones: {} };
         }
-        empresaMap[region].cantidadFacturas += f.cantidadFacturas;
-        empresaMap[region].totalVentas += f.totalVentas;
-
-        // Acumular dimensiones
+        empresaMap[region].ingresos += Number(f.totalVentas) || 0;
+        empresaMap[region].ventas   += Number(f.cantidadFacturas) || 0;
         Object.entries(f.dimensiones || {}).forEach(([dim, val]) => {
-          empresaMap[region].dimensiones[dim] = (empresaMap[region].dimensiones[dim] || 0) + val;
+          empresaMap[region].dimensiones[dim] = (empresaMap[region].dimensiones[dim] || 0) + Number(val);
         });
       });
 
-      // Orden fijo de empresas
-      const empresas = ORDEN_EMPRESAS.filter(e => empresaMap[e]);
+      const ordenFijoEmpresas = ['Argentina', 'España', 'Chile', 'Otros'];
+      const sortedEmpresas = ordenFijoEmpresas
+        .filter(e => empresaMap[e])
+        .map(e => [e, empresaMap[e]]);
 
-      const totalIngresos = empresas.reduce((s, e) => s + empresaMap[e].totalVentas, 0);
-      const totalFacturas = empresas.reduce((s, e) => s + empresaMap[e].cantidadFacturas, 0);
+      const totalIngresos = sortedEmpresas.reduce((s, [, d]) => s + d.ingresos, 0);
+      const totalVentas   = sortedEmpresas.reduce((s, [, d]) => s + d.ventas, 0);
 
       document.getElementById('total').textContent =
-        `Ingresos totales: ${formatMoney(totalIngresos)} · Facturas: ${totalFacturas}`;
+        `Ingresos totales: ${formatMoney(totalIngresos)} · Ventas: ${totalVentas}`;
 
-      // Recolectar todas las dimensiones presentes (para paleta consistente)
-      const todasDims = new Set();
-      empresas.forEach(e => Object.keys(empresaMap[e].dimensiones).forEach(d => todasDims.add(d)));
-      // Pre-asignar colores en orden determinista
-      [...todasDims].sort().forEach(d => getDimColor(d));
-
-      // Construir gráficos
-      const container = document.getElementById('chartsContainer');
+      // Un gráfico por empresa
+      const container = document.getElementById('empresaCharts');
       container.innerHTML = '';
 
-      empresas.forEach(region => {
-        const data = empresaMap[region];
+      sortedEmpresas.forEach(([region, data]) => {
         const dims = Object.entries(data.dimensiones).sort((a, b) => b[1] - a[1]);
 
-        // Barras: "Total" + cada dimensión
         const labels = ['Total', ...dims.map(([d]) => d)];
-        const values = [data.totalVentas, ...dims.map(([, v]) => v)];
-        const colors = ['#0f172a', ...dims.map(([d]) => getDimColor(d))];
+        const values = [data.ingresos, ...dims.map(([, v]) => v)];
+        const colors = ['#0ea5a4', ...dims.map((_, i) => DIM_COLORS[i % DIM_COLORS.length])];
 
         const block = document.createElement('div');
         block.className = 'empresa-block';
         block.innerHTML = `
           <h3>${region}</h3>
-          <div class="empresa-total">${formatMoney(data.totalVentas)} · ${data.cantidadFacturas} facturas</div>
+          <div class="empresa-subtotal">${formatMoney(data.ingresos)} · ${data.ventas} facturas</div>
           <canvas id="chart-${region}"></canvas>
         `;
         container.appendChild(block);
 
         const ctx = block.querySelector(`#chart-${region}`).getContext('2d');
-        chartInstances[region] = new Chart(ctx, {
+        const instance = new Chart(ctx, {
           type: 'bar',
           data: {
             labels,
@@ -241,51 +223,49 @@
             interaction: { mode: 'nearest', intersect: false },
             plugins: {
               legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: ctx => formatMoney(ctx.raw)
-                }
-              }
+              tooltip: { callbacks: { label: ctx => formatMoney(ctx.raw) } }
             },
             scales: {
-              x: { ticks: { font: { size: 11 } } },
               y: {
                 beginAtZero: true,
-                ticks: { callback: v => formatMoney(v), font: { size: 11 } }
+                ticks: { callback: v => formatMoney(v) }
               }
             }
           }
         });
+        chartInstances.push(instance);
       });
 
-      // Tabla resumen
+      // Tabla de datos (sin cambios)
       const tbody = document.getElementById('tablaEmpresas');
-      tbody.innerHTML = empresas.map(region => {
-        const data = empresaMap[region];
-        const pct = totalFacturas > 0 ? ((data.cantidadFacturas / totalFacturas) * 100).toFixed(1) : 0;
-        return `
-          <tr>
-            <td><strong>${region}</strong></td>
-            <td>${formatMoney(data.totalVentas)}</td>
-            <td>${data.cantidadFacturas}</td>
-            <td>${pct}%</td>
-          </tr>
-        `;
-      }).join('');
+      tbody.innerHTML = sortedEmpresas.map(([empresa, data]) => `
+        <tr>
+          <td><strong>${empresa}</strong></td>
+          <td>${formatMoney(data.ingresos)}</td>
+          <td>${data.ventas}</td>
+          <td>${totalVentas > 0 ? ((data.ventas / totalVentas) * 100).toFixed(1) : 0}%</td>
+        </tr>
+      `).join('');
     }
 
     (async () => {
       await cargarMesesYAños();
       const mesSelect = document.getElementById('mesSelect');
-
+      
       const firstValue = mesSelect.value;
-      if (firstValue.startsWith('mes:')) await render(firstValue.substring(4), null);
-      else if (firstValue.startsWith('año:')) await render(null, firstValue.substring(4));
+      if (firstValue.startsWith('mes:')) {
+        await render(firstValue.substring(4), null);
+      } else if (firstValue.startsWith('año:')) {
+        await render(null, firstValue.substring(4));
+      }
 
       mesSelect.addEventListener('change', async (e) => {
         const value = e.target.value;
-        if (value.startsWith('mes:')) await render(value.substring(4), null);
-        else if (value.startsWith('año:')) await render(null, value.substring(4));
+        if (value.startsWith('mes:')) {
+          await render(value.substring(4), null);
+        } else if (value.startsWith('año:')) {
+          await render(null, value.substring(4));
+        }
       });
     })();
   </script>
