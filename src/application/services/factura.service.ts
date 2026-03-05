@@ -340,6 +340,7 @@ export class FacturaService {
       empresa: string;
       cantidadFacturas: number;
       totalVentas: number;
+      dimensiones: Record<string, number>;
     }[]
   }> {
     try {
@@ -356,17 +357,29 @@ export class FacturaService {
         facturas = await this.repository.obtenerPorMes(mes);
       }
 
-      const empresas: { [key: string]: { cantidadFacturas: number; totalVentas: number } } = {};
+      const empresas: {
+        [key: string]: {
+          cantidadFacturas: number;
+          totalVentas: number;
+          dimensiones: Record<string, number>;
+        }
+      } = {};
 
       for (const f of facturas) {
         const empresa = f.empresa?.trim() || 'Otros';
         
         if (!empresas[empresa]) {
-          empresas[empresa] = { cantidadFacturas: 0, totalVentas: 0 };
+          empresas[empresa] = { cantidadFacturas: 0, totalVentas: 0, dimensiones: {} };
         }
 
         empresas[empresa].cantidadFacturas += 1;
         empresas[empresa].totalVentas += f.total;
+
+        const dim = f.dimensionValor;
+        if (dim && dim !== 'Sin dimensión valor') {
+          empresas[empresa].dimensiones[dim] =
+            (empresas[empresa].dimensiones[dim] || 0) + f.total;
+        }
       }
 
       const [mesNum, año] = mes.split('-');
@@ -383,6 +396,11 @@ export class FacturaService {
           empresa,
           cantidadFacturas: data.cantidadFacturas,
           totalVentas: Math.round(data.totalVentas * 100) / 100,
+          dimensiones: Object.fromEntries(
+            Object.entries(data.dimensiones)
+              .sort((a, b) => b[1] - a[1])
+              .map(([k, v]) => [k, Math.round(v * 100) / 100])
+          ),
         }))
       };
     } catch (error) {
