@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>KPIs</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial; background:#f7fafc; padding:24px }
+    .card { max-width:900px; margin:auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(2,6,23,0.06) }
+    h1 { margin-bottom:4px }
+    .subtitle { color:#64748b; font-size:13px; margin-bottom:24px }
+    .mes-selector { margin-bottom:28px; display:flex; gap:12px; align-items:center }
+    .mes-selector label { font-weight:600; font-size:14px }
+    .mes-selector select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:4px; font-size:14px; cursor:pointer; min-width:200px }
+
+    /* period info bar */
+    .period-info { background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px 16px; margin-bottom:28px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px }
+    .pi-item { font-size:12px; color:#475569 }
+    .pi-item strong { display:block; font-size:13px; color:#0f172a; margin-bottom:2px }
+    .pi-item .pi-period { color:#0ea5a4; font-weight:600 }
+
+    /* section headers */
+    .kpi-section { border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin-bottom:20px }
+    .kpi-section-title { font-weight:700; font-size:14px; color:#0f172a; margin-bottom:4px; display:flex; align-items:center; gap:8px }
+    .kpi-section-title .period-tag { font-size:11px; font-weight:600; background:#dbeafe; color:#1e40af; border-radius:3px; padding:2px 6px }
+    .kpi-section-title .period-tag.anual { background:#dcfce7; color:#166534 }
+    .kpi-section-desc { font-size:12px; color:#94a3b8; margin-bottom:14px }
+
+    .inputs-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px }
+    .input-group { display:flex; flex-direction:column; gap:4px }
+    .input-group label { font-size:13px; font-weight:600; color:#475569 }
+    .input-group .hint { font-size:11px; color:#94a3b8; margin-top:2px }
+    .input-group input { padding:8px 10px; border:1px solid #e2e8f0; border-radius:6px; font-size:14px; width:100% }
+    .input-group input:focus { outline:none; border-color:#0ea5a4; box-shadow:0 0 0 2px rgba(14,165,164,0.1) }
+    .input-group input[readonly] { background:#f8fafc; color:#475569 }
+    .auto-badge { font-size:11px; color:#0ea5a4; font-weight:600; margin-top:2px }
+
+    .btn-calcular { padding:10px 24px; background:#0ea5a4; color:#fff; border:none; border-radius:6px; font-weight:600; font-size:14px; cursor:pointer; margin:24px 0 28px }
+    .btn-calcular:hover { background:#0d9488 }
+    .btn-calcular:disabled { opacity:0.6; cursor:not-allowed }
+
+    .results { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:32px }
+    .result-card { border:1px solid #e2e8f0; border-radius:8px; padding:16px }
+    .result-card .rc-label { font-size:12px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px }
+    .result-card .rc-period { font-size:11px; color:#94a3b8; margin-bottom:8px }
+    .result-card .rc-value { font-size:28px; font-weight:700; color:#0f172a }
+    .result-card .rc-value.negative { color:#ef4444 }
+    .result-card .rc-value.positive { color:#22c55e }
+    .result-card .rc-sub { font-size:12px; color:#94a3b8; margin-top:4px }
+
+    .section-title { font-weight:600; font-size:14px; color:#0f172a; margin-bottom:10px }
+    .data-table { width:100%; border-collapse:collapse; margin-bottom:28px }
+    .data-table th { background:#f1f5f9; padding:8px; text-align:left; border:1px solid #e2e8f0; font-weight:600; font-size:12px }
+    .data-table td { padding:8px; border:1px solid #e2e8f0; font-size:14px }
+    .data-table tr:nth-child(even) { background:#f8fafc }
+    .source-badge { font-size:10px; border-radius:3px; padding:1px 5px; margin-left:6px; font-weight:600 }
+    .source-finnegans { background:#dbeafe; color:#1e40af }
+    .source-manual { background:#fef3c7; color:#92400e }
+
+    .hidden { display:none }
+  </style>
+  <script src="../components/auth.js"></script>
+  <script src="../components/nav-bar-custom.js" defer></script>
+</head>
+<body>
+  <nav-bar-custom></nav-bar-custom>
+  <div class="card">
+    <h1>KPIs Financieros</h1>
+    <p class="subtitle">CAC · Tasa de Retención · Lifetime Value</p>
+
+    <div class="mes-selector">
+      <label for="mesSelect">Período de referencia:</label>
+      <select id="mesSelect"><option value="">Cargando...</option></select>
+    </div>
+
+    <!-- Barra informativa de períodos -->
+    <div class="period-info">
+      <div class="pi-item">
+        <strong>CAC</strong>
+        Usa el período seleccionado<br>
+        <span class="pi-period" id="labelPeriodCAC">—</span>
+      </div>
+      <div class="pi-item">
+        <strong>Tasa de Retención</strong>
+        Siempre anual<br>
+        <span class="pi-period" id="labelPeriodRetencion">—</span>
+      </div>
+      <div class="pi-item">
+        <strong>LTV</strong>
+        Siempre anual<br>
+        <span class="pi-period" id="labelPeriodLTV">—</span>
+      </div>
+    </div>
+
+    <!-- Sección CAC -->
+    <div class="kpi-section">
+      <div class="kpi-section-title">
+        CAC — Costo de Adquisición de Clientes
+        <span class="period-tag" id="tagCAC">período seleccionado</span>
+      </div>
+      <div class="kpi-section-desc">Costos del período / clientes nuevos únicos del período</div>
+      <div class="inputs-grid">
+        <div class="input-group">
+          <label>Clientes nuevos únicos (contrato 0001)</label>
+          <input type="number" id="qClientesNuevosFinne" placeholder="Cargando..." readonly />
+          <span class="auto-badge">↺ Datos desde Finnegans</span>
+        </div>
+        <div class="input-group">
+          <label>Costos del período (USD)</label>
+          <input type="number" id="costos" placeholder="ej: 77000" min="0" />
+          <span class="hint">Fuente: ??? <span class="source-badge source-manual">MANUAL</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sección Tasa de Retención -->
+    <div class="kpi-section">
+      <div class="kpi-section-title">
+        Tasa de Retención
+        <span class="period-tag anual" id="tagRetencion">anual</span>
+      </div>
+      <div class="kpi-section-desc">(Clientes fin de año − Clientes nuevos del año) / Clientes al inicio del año</div>
+      <div class="inputs-grid">
+        <div class="input-group">
+          <label>Clientes únicos B2B al cierre del año (nuevo + recompra)</label>
+          <input type="number" id="qClientesAnual" placeholder="Cargando..." readonly />
+          <span class="auto-badge">↺ Datos desde Finnegans</span>
+        </div>
+        <div class="input-group">
+          <label>Clientes nuevos únicos del año (contrato 0001)</label>
+          <input type="number" id="qClientesNuevosAnual" placeholder="Cargando..." readonly />
+          <span class="auto-badge">↺ Datos desde Finnegans</span>
+        </div>
+        <div class="input-group">
+          <label>Clientes al inicio del año</label>
+          <input type="number" id="clientesInicio" placeholder="ej: 250" min="0" />
+          <span class="hint">Dato del cierre del año anterior <span class="source-badge source-manual">MANUAL</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sección LTV -->
+    <div class="kpi-section">
+      <div class="kpi-section-title">
+        LTV — Lifetime Value
+        <span class="period-tag anual" id="tagLTV">anual</span>
+      </div>
+      <div class="kpi-section-desc">(Ticket Promedio x Q Facturas / Q Clientes x Tasa Duración) - CAC</div>
+      <div class="inputs-grid">
+        <div class="input-group">
+          <label>Ticket Promedio anual (USD)</label>
+          <input type="number" id="ticketPromedio" placeholder="Cargando..." readonly />
+          <span class="auto-badge">↺ Datos desde Finnegans</span>
+        </div>
+        <div class="input-group">
+          <label>Q Facturas del año (sin Conócete)</label>
+          <input type="number" id="qFacturas" placeholder="Cargando..." readonly />
+          <span class="auto-badge">↺ Datos desde Finnegans</span>
+        </div>
+        <div class="input-group">
+          <label>Q Clientes B2B únicos del año</label>
+          <input type="number" id="qClientesLTV" placeholder="Cargando..." readonly />
+          <span class="auto-badge">↺ Datos desde Finnegans</span>
+        </div>
+        <div class="input-group">
+          <label>Tasa de Duración (años)</label>
+          <input type="number" id="tasaDuracion" placeholder="ej: 1.6" step="0.1" min="0" value="1.6" />
+          <span class="hint">Parámetro fijo <span class="source-badge source-manual">MANUAL</span></span>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-calcular" id="btnCalcular" disabled>Calcular KPIs</button>
+
+    <div id="results" class="hidden">
+      <div class="results">
+        <div class="result-card">
+          <div class="rc-label">CAC</div>
+          <div class="rc-period" id="resLabelCAC">—</div>
+          <div class="rc-value" id="resCAC">—</div>
+          <div class="rc-sub">Costo de Adquisición de Clientes</div>
+        </div>
+        <div class="result-card">
+          <div class="rc-label">Tasa de Retención</div>
+          <div class="rc-period" id="resLabelRetencion">—</div>
+          <div class="rc-value" id="resTasaRetencion">—</div>
+          <div class="rc-sub">Fidelización anual</div>
+        </div>
+        <div class="result-card">
+          <div class="rc-label">LTV</div>
+          <div class="rc-period" id="resLabelLTV">—</div>
+          <div class="rc-value" id="resLTV">—</div>
+          <div class="rc-sub">Lifetime Value</div>
+        </div>
+      </div>
+
+      <div class="section-title">Detalle del cálculo</div>
+      <table class="data-table">
+        <thead>
+          <tr><th>Métrica</th><th>Valor</th><th>Período</th><th>Fuente</th></tr>
+        </thead>
+        <tbody id="tablaDetalle"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    if (!Auth.isAuthenticated()) {
+      window.location.href = '/login';
+    }
+
+    function fmtUSD(v) {
+      const abs = Math.abs(v);
+      const formatted = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(abs);
+      return (v < 0 ? '-' : '') + 'USD ' + formatted;
+    }
+    function fmtPct(v) { return (v * 100).toFixed(1) + '%' }
+    function numVal(id) { return parseFloat(document.getElementById(id).value) || 0 }
+
+    // Estado global del período seleccionado
+    let _periodoLabel = '';   // ej: "Enero 2025"
+    let _año = '';            // ej: "2025"
+
+    async function cargarMesesYAños() {
+      try {
+        const res = await Auth.fetch('/facturas/meses');
+        const json = await res.json();
+        const mesesActual = json.data.mesesActual || [];
+        const años = json.data.años || [];
+
+        const mesSelect = document.getElementById('mesSelect');
+        mesSelect.innerHTML = '';
+
+        const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+        mesesActual.forEach(mes => {
+          const option = document.createElement('option');
+          option.value = `mes:${mes}`;
+          const [mesNum, año] = mes.split('-');
+          option.textContent = `${mesesNombres[parseInt(mesNum)-1]} ${año}`;
+          mesSelect.appendChild(option);
+        });
+
+        if (mesesActual.length > 0 && años.length > 0) {
+          const sep = document.createElement('option');
+          sep.disabled = true;
+          sep.textContent = 'Acumulados Anuales:';
+          mesSelect.appendChild(sep);
+        }
+
+        años.forEach(año => {
+          const option = document.createElement('option');
+          option.value = `año:${año}`;
+          option.textContent = `${año}`;
+          mesSelect.appendChild(option);
+        });
+
+        if (mesesActual.length > 0) mesSelect.value = `mes:${mesesActual[0]}`;
+      } catch(e) {
+        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return; }
+        console.error(e);
+      }
+    }
+
+    function actualizarLabels(periodoLabel, año) {
+      document.getElementById('labelPeriodCAC').textContent       = periodoLabel;
+      document.getElementById('labelPeriodRetencion').textContent  = `Año ${año}`;
+      document.getElementById('labelPeriodLTV').textContent        = `Año ${año}`;
+      document.getElementById('tagCAC').textContent                = periodoLabel;
+      document.getElementById('tagRetencion').textContent          = `año ${año}`;
+      document.getElementById('tagLTV').textContent                = `año ${año}`;
+    }
+
+    function limpiarInputsAuto() {
+      ['ticketPromedio','qFacturas','qClientesAnual','qClientesNuevosAnual','qClientesNuevosFinne','qClientesLTV'].forEach(id => {
+        document.getElementById(id).value = '';
+        document.getElementById(id).placeholder = 'Cargando...';
+      });
+      document.getElementById('btnCalcular').disabled = true;
+      document.getElementById('results').classList.add('hidden');
+    }
+
+    async function cargarDatosFinnegans(mes, año) {
+      limpiarInputsAuto();
+
+      // El CAC usa el período seleccionado; retención y LTV usan siempre el año
+      const paramsPeriodo = mes ? `mes=${mes}` : `año=${año}`;
+      const paramsAnual   = `año=${año}`;
+
+      try {
+        const [resDashAnual, resContratosAnual, resCUAnual, resCUPeriodo] = await Promise.all([
+          Auth.fetch(`/facturas/dashboardGeneral?${paramsAnual}`).then(r => r.json()),
+          Auth.fetch(`/facturas/contratos?${paramsAnual}`).then(r => r.json()),
+          Auth.fetch(`/facturas/clientes-unicos?${paramsAnual}`).then(r => r.json()),
+          // Si el período ya es anual, reusar; si es mensual, pedir por separado
+          mes
+            ? Auth.fetch(`/facturas/clientes-unicos?${paramsPeriodo}`).then(r => r.json())
+            : null,
+        ]);
+
+        // --- LTV y Retención: datos anuales ---
+        const dashAnual = resDashAnual.data;
+        document.getElementById('ticketPromedio').value = dashAnual.promedioPorFactura
+          ? dashAnual.promedioPorFactura.toFixed(2) : '';
+
+        const contratosAnual = resContratosAnual.data.datos || [];
+        let facturasSinConoceteAnual = 0;
+        contratosAnual.forEach(c => {
+          const n = c.numeroContrato.trim().toLowerCase();
+          if (n !== 'conócete' && n !== 'conocete') facturasSinConoceteAnual += c.cantidad;
+        });
+        document.getElementById('qFacturas').value = facturasSinConoceteAnual;
+
+        const cuAnual = resCUAnual.data;
+        document.getElementById('qClientesAnual').value       = cuAnual.b2bTotal;
+        document.getElementById('qClientesNuevosAnual').value = cuAnual.nuevos;
+        document.getElementById('qClientesLTV').value         = cuAnual.b2bTotal;
+
+        // --- CAC: datos del período seleccionado ---
+        const cuPeriodo = mes ? resCUPeriodo.data : cuAnual;
+        document.getElementById('qClientesNuevosFinne').value = cuPeriodo.nuevos;
+
+        document.getElementById('btnCalcular').disabled = false;
+      } catch(e) {
+        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return; }
+        console.error('Error cargando datos Finnegans:', e);
+      }
+    }
+
+    function calcular() {
+      // CAC — período seleccionado
+      const clientesNuevosPeriodo = numVal('qClientesNuevosFinne');
+      const costos                = numVal('costos');
+      const cac = clientesNuevosPeriodo > 0 ? costos / clientesNuevosPeriodo : 0;
+
+      // Tasa de Retención — anual
+      const qClientesAnual       = numVal('qClientesAnual');
+      const qClientesNuevosAnual = numVal('qClientesNuevosAnual');
+      const clientesInicio       = numVal('clientesInicio');
+      const tasaRetencion = clientesInicio > 0
+        ? (qClientesAnual - qClientesNuevosAnual) / clientesInicio
+        : 0;
+
+      // LTV — anual
+      const ticketPromedio = numVal('ticketPromedio');
+      const qFacturas      = numVal('qFacturas');
+      const qClientesLTV   = numVal('qClientesLTV');
+      const tasaDuracion   = numVal('tasaDuracion');
+      const ltv = qClientesLTV > 0
+        ? (ticketPromedio * qFacturas / qClientesLTV * tasaDuracion) - cac
+        : 0;
+
+      // Cards
+      document.getElementById('resLabelCAC').textContent       = _periodoLabel;
+      document.getElementById('resLabelRetencion').textContent  = `Año ${_año}`;
+      document.getElementById('resLabelLTV').textContent        = `Año ${_año}`;
+
+      const elCAC = document.getElementById('resCAC');
+      elCAC.textContent = fmtUSD(cac);
+      elCAC.className = 'rc-value';
+
+      const elRet = document.getElementById('resTasaRetencion');
+      elRet.textContent = fmtPct(tasaRetencion);
+      elRet.className = 'rc-value ' + (tasaRetencion >= 0.5 ? 'positive' : 'negative');
+
+      const elLTV = document.getElementById('resLTV');
+      elLTV.textContent = fmtUSD(ltv);
+      elLTV.className = 'rc-value ' + (ltv >= 0 ? 'positive' : 'negative');
+
+      // Tabla detalle
+      const filas = [
+        // CAC
+        ['Clientes nuevos únicos (CAC)',        clientesNuevosPeriodo,  _periodoLabel,   'Finnegans'],
+        ['Costos del período (CAC)',             fmtUSD(costos),         _periodoLabel,   'Manual'],
+        ['→ CAC',                               fmtUSD(cac),            _periodoLabel,   ''],
+        // Retención
+        ['Clientes B2B al cierre (Retención)',  qClientesAnual,         `Año ${_año}`,   'Finnegans'],
+        ['Clientes nuevos únicos (Retención)',  qClientesNuevosAnual,   `Año ${_año}`,   'Finnegans'],
+        ['Clientes al inicio del año',          clientesInicio,         `Año ${_año}`,   'Manual'],
+        ['→ Tasa de Retención',                 fmtPct(tasaRetencion),  `Año ${_año}`,   ''],
+        // LTV
+        ['Ticket Promedio (LTV)',               fmtUSD(ticketPromedio), `Año ${_año}`,   'Finnegans'],
+        ['Q Facturas sin Conócete (LTV)',       qFacturas,              `Año ${_año}`,   'Finnegans'],
+        ['Q Clientes B2B únicos (LTV)',         qClientesLTV,           `Año ${_año}`,   'Finnegans'],
+        ['Tasa de Duración (años)',             tasaDuracion,           '—',             'Manual'],
+        ['→ LTV',                               fmtUSD(ltv),            `Año ${_año}`,   ''],
+      ];
+
+      document.getElementById('tablaDetalle').innerHTML = filas.map(([metrica, valor, periodo, fuente]) => {
+        const srcClass = fuente === 'Finnegans' ? 'source-finnegans' : fuente ? 'source-manual' : '';
+        const srcBadge = fuente ? `<span class="source-badge ${srcClass}">${fuente}</span>` : '';
+        return `<tr><td>${metrica}</td><td><strong>${valor}</strong></td><td style="color:#64748b;font-size:12px">${periodo}</td><td>${srcBadge}</td></tr>`;
+      }).join('');
+
+      document.getElementById('results').classList.remove('hidden');
+    }
+
+    document.getElementById('btnCalcular').addEventListener('click', calcular);
+
+    const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    async function onChange(value) {
+      let mes = null, año = null, label = '';
+
+      if (value.startsWith('mes:')) {
+        mes = value.substring(4);
+        const [mesNum, a] = mes.split('-');
+        año = a;
+        label = `${mesesNombres[parseInt(mesNum)-1]} ${año}`;
+      } else if (value.startsWith('año:')) {
+        año = value.substring(4);
+        label = `Año ${año}`;
+      }
+
+      _periodoLabel = label;
+      _año = año;
+
+      actualizarLabels(label, año);
+      await cargarDatosFinnegans(mes, año);
+    }
+
+    document.getElementById('mesSelect').addEventListener('change', e => onChange(e.target.value));
+
+    (async () => {
+      await cargarMesesYAños();
+      const firstValue = document.getElementById('mesSelect').value;
+      if (firstValue) await onChange(firstValue);
+    })();
+  </script>
+</body>
+</html>

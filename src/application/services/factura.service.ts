@@ -409,6 +409,78 @@ export class FacturaService {
     }
   }
 
+    /**
+   * Obtiene clientes únicos por tipo de contrato para un mes específico o año completo.
+   * Deduplica por campo `cliente` dentro de cada grupo.
+   *
+   * Contratos 0001 → nuevos (B2B)
+   * Contratos 0002 → recompra (B2B)
+   * El resto       → marketplace
+   */
+  async obtenerClientesUnicos(mesEspecifico?: string, añoEspecifico?: string): Promise<{
+    mes: string;
+    mesFormato: string;
+    tipo: 'mes' | 'año';
+    nuevos: number;
+    recompra: number;
+    b2bTotal: number;       // únicos entre nuevos + recompra (sin doble conteo)
+    marketplace: number;
+    total: number;
+  }> {
+    try {
+      let facturas: any[] = [];
+      let mes: string;
+      let tipo: 'mes' | 'año' = 'mes';
+
+      if (añoEspecifico) {
+        facturas = await this.repository.obtenerPorAño(añoEspecifico);
+        mes = `01-${añoEspecifico}`;
+        tipo = 'año';
+      } else {
+        mes = mesEspecifico || this.obtenerMesActual();
+        facturas = await this.repository.obtenerPorMes(mes);
+      }
+
+      const clientesNuevos      = new Set<string>();
+      const clientesRecompra    = new Set<string>();
+      const clientesB2B         = new Set<string>();
+      const clientesMarketplace = new Set<string>();
+
+      for (const f of facturas) {
+        const cliente  = f.cliente?.trim() || 'Sin cliente';
+        const contrato = f.numeroContrato?.trim() || '';
+
+        if (contrato === '0001') {
+          clientesNuevos.add(cliente);
+          clientesB2B.add(cliente);
+        } else if (contrato === '0002') {
+          clientesRecompra.add(cliente);
+          clientesB2B.add(cliente);
+        } else {
+          clientesMarketplace.add(cliente);
+        }
+      }
+
+      const [mesNum, año] = mes.split('-');
+      const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const mesFormato = tipo === 'año' ? año : `${meses[parseInt(mesNum) - 1]} ${año}`;
+
+      return {
+        mes: tipo === 'año' ? año : mes,
+        mesFormato,
+        tipo,
+        nuevos:      clientesNuevos.size,
+        recompra:    clientesRecompra.size,
+        b2bTotal:    clientesB2B.size,
+        marketplace: clientesMarketplace.size,
+        total:       new Set([...clientesB2B, ...clientesMarketplace]).size,
+      };
+    } catch (error) {
+      console.error('Error en obtenerClientesUnicos', error);
+      throw error;
+    }
+  }
+
   /**
    * Obtiene todas las facturas
    */

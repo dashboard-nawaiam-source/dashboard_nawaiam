@@ -143,4 +143,21 @@ export class FacturaController {
       });
     }
   }
+  
+  /**
+   * GET /facturas/clientes-unicos?mes=MM-YYYY  ó  ?año=YYYY
+   */
+  async obtenerClientesUnicos(req: Request, res: Response): Promise<void> {
+    try {
+      const mes  = req.query.mes  as string | undefined;
+      const año  = req.query.año  as string | undefined;
+      const resultado = await this.service.obtenerClientesUnicos(mes, año);
+      res.json({ success: true, data: resultado });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Error obteniendo clientes únicos',
+      });
+    }
+  }
 }

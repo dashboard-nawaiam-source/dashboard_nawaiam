@@ -19,6 +19,7 @@ export function createFacturaRoutes(http: FinnegansHttp): Router {
   router.get('/ranking-vendedores', (req, res) => controller.obtenerRankingVendedores(req, res));
   router.get('/contratos', (req, res) => controller.obtenerContratos(req, res));
   router.get('/empresas', (req, res) => controller.obtenerEmpresas(req, res));
+  router.get('/clientes-unicos', (req, res) => controller.obtenerClientesUnicos(req, res));
   router.get('/', (req, res) => controller.obtenerTodas(req, res));
   
   // borrar caché:
