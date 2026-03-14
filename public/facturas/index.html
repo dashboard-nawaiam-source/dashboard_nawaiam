@@ -37,6 +37,7 @@
     </div>
 
     <div class="subtitle" id="mes">Cargando...</div>
+    <div class="subtitle" id="totalBruto">Cargando...</div>
     
     <canvas id="chart"></canvas>
 
@@ -141,6 +142,7 @@
 
     function render(d) {
       document.getElementById('mes').textContent = '';
+      document.getElementById('totalBruto').textContent = `Total: ${formatMoney(d.totalVentas)}`;
       const ctx = document.getElementById('chart').getContext('2d');
 
       const dimEntries = Object.entries(d.dimensiones || {});
