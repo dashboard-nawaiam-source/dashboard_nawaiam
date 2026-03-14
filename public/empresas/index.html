@@ -170,17 +170,22 @@
 
       const totalIngresos = sortedEmpresas.reduce((s, [, d]) => s + d.ingresos, 0);
       const totalVentas   = sortedEmpresas.reduce((s, [, d]) => s + d.ventas, 0);
+      const totalIngresosSinPiloto = sortedEmpresas.reduce((s, [, d]) => {
+        const piloto = Object.entries(d.dimensiones || {}).reduce((acc, [k, v]) => acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
+        return s + (Number(d.ingresos || 0) - piloto);
+      }, 0);
 
       document.getElementById('total').textContent =
-        `Ingresos totales: ${formatMoney(totalIngresos)} · Ventas: ${totalVentas}`;
+        `Ingresos totales sin prueba piloto: ${formatMoney(totalIngresosSinPiloto)} · Ventas: ${totalVentas}`;
 
       const container = document.getElementById('empresaCharts');
       container.innerHTML = '';
 
       sortedEmpresas.forEach(([region, data]) => {
-        const dims = Object.entries(data.dimensiones).sort((a, b) => b[1] - a[1]);
-        const labels = ['Total', ...dims.map(([d]) => d)];
-        const values = [data.ingresos, ...dims.map(([, v]) => v)];
+        const dims = Object.entries(data.dimensiones || {}).sort((a, b) => b[1] - a[1]);
+        const pilotoVal = Object.entries(data.dimensiones || {}).reduce((acc, [k, v]) => acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
+        const labels = ['Total sin prueba piloto', ...dims.map(([d]) => d)];
+        const values = [Number(data.ingresos || 0) - pilotoVal, ...dims.map(([, v]) => v)];
         const colors = ['#0ea5a4', ...dims.map((_, i) => DIM_COLORS[i % DIM_COLORS.length])];
 
         const block = document.createElement('div');

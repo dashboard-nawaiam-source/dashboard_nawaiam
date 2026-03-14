@@ -144,8 +144,9 @@
       const ctx = document.getElementById('chart').getContext('2d');
 
       const dimEntries = Object.entries(d.dimensiones || {});
-      const labels = ['Total ventas', ...dimEntries.map(([dim]) => dim), 'Promedio por factura', 'Cantidad facturas'];
-      const values = [d.totalVentas, ...dimEntries.map(([, v]) => v), d.promedioPorFactura, d.cantidadFacturas];
+      const pilotoVal = dimEntries.reduce((acc, [k, v]) => acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
+      const labels = ['Total sin prueba piloto', ...dimEntries.map(([dim]) => dim), 'Promedio por factura', 'Cantidad facturas'];
+      const values = [Number(d.totalVentas || 0) - pilotoVal, ...dimEntries.map(([, v]) => v), d.promedioPorFactura, d.cantidadFacturas];
       const DIM_COLORS = ['#22c55e', '#60a5fa', '#f97316', '#a78bfa', '#f43f5e', '#facc15', '#34d399', '#fb923c'];
       const colors = [
         '#0ea5a4',
@@ -205,8 +206,8 @@
       const tbody = document.getElementById('demoTable');
       tbody.innerHTML = `
         <tr>
-          <td><strong>Total Ventas</strong></td>
-          <td>${formatMoney(d.totalVentas)}</td>
+          <td><strong>Total sin prueba piloto</strong></td>
+          <td>${formatMoney(Number(d.totalVentas || 0) - pilotoVal)}</td>
         </tr>
         ${filaDimensiones}
         <tr>
