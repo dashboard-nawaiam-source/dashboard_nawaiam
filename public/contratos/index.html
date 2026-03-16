@@ -44,6 +44,7 @@
           <tr>
             <th>Tipo de Contrato</th>
             <th>Total de Ventas</th>
+            <th>Cantidad de Operaciones</th>
           </tr>
         </thead>
         <tbody id="tablaTipoContrato">
@@ -78,7 +79,6 @@
         const mesSelect = document.getElementById('mesSelect');
         mesSelect.innerHTML = '';
         
-        // Agregar meses del año actual
         mesesActual.forEach(mes => {
           const option = document.createElement('option');
           option.value = `mes:${mes}`;
@@ -88,7 +88,6 @@
           mesSelect.appendChild(option);
         });
 
-        // Agregar separador visual
         if (mesesActual.length > 0 && años.length > 0) {
           const separator = document.createElement('option');
           separator.disabled = true;
@@ -96,7 +95,6 @@
           mesSelect.appendChild(separator);
         }
 
-        // Agregar años
         años.forEach(año => {
           const option = document.createElement('option');
           option.value = `año:${año}`;
@@ -104,7 +102,6 @@
           mesSelect.appendChild(option);
         });
         
-        // Seleccionar el primer mes del año actual por defecto
         if (mesesActual.length > 0) {
           mesSelect.value = `mes:${mesesActual[0]}`;
         }
@@ -179,29 +176,30 @@
       const contratos = resultado.datos;
 
       const tipoContratoMap = {};
-      const segmentacionMap = { 'B2B': 0, 'Marketplace': 0 };
+      const segmentacionMap = { 'B2B': { cantidad: 0, totalVentas: 0 }, 'Marketplace': { cantidad: 0, totalVentas: 0 } };
 
       contratos.forEach(c => {
         const tipoContrato = mapContractType(c.numeroContrato);
         const segmentacion = getSegmentationType(c.numeroContrato);
         
         if (!tipoContratoMap[tipoContrato]) {
-          tipoContratoMap[tipoContrato] = 0;
+          tipoContratoMap[tipoContrato] = { totalVentas: 0, cantidad: 0 };
         }
 
-        tipoContratoMap[tipoContrato] += c.totalVentas;
-        segmentacionMap[segmentacion] += c.cantidad;
+        tipoContratoMap[tipoContrato].totalVentas += c.totalVentas;
+        tipoContratoMap[tipoContrato].cantidad    += c.cantidad;
+        segmentacionMap[segmentacion].cantidad    += c.cantidad;
+        segmentacionMap[segmentacion].totalVentas += c.totalVentas;
       });
 
-      // Gráfico barras - Ordenar en orden fijo
+      // Gráfico barras
       const ctx1 = document.getElementById('chartTipoContrato').getContext('2d');
       const ordenFijo = ['Nuevos', 'Recompra', 'Orientación Vocacional', 'Conócete', 'Otros'];
       const tipoContratoLabels = ordenFijo.filter(label => tipoContratoMap[label] !== undefined);
-      const tipoContratoValues = tipoContratoLabels.map(label => tipoContratoMap[label]);
+      const tipoContratoValues = tipoContratoLabels.map(label => tipoContratoMap[label].totalVentas);
       const tipoContratoColors = tipoContratoLabels.map(label => getColorByContractType(label));
 
       if (window._chart1) window._chart1.destroy();
-
       window._chart1 = new Chart(ctx1, {
         type: 'bar',
         data: {
@@ -214,10 +212,7 @@
         },
         options: {
           responsive: true,
-          interaction: {
-            mode: 'nearest',
-            intersect: false
-          },
+          interaction: { mode: 'nearest', intersect: false },
           maintainAspectRatio: false,
           scales: { y: { beginAtZero: true } },
           plugins: { 
@@ -227,25 +222,40 @@
         }
       });
 
-      // Tabla de datos
+      // Tabla con columna de cantidad de operaciones
+      const totalVentasGlobal   = tipoContratoLabels.reduce((s, l) => s + tipoContratoMap[l].totalVentas, 0);
+      const totalCantidadGlobal = tipoContratoLabels.reduce((s, l) => s + tipoContratoMap[l].cantidad, 0);
+
       const tbody = document.getElementById('tablaTipoContrato');
       tbody.innerHTML = tipoContratoLabels.map(label => `
         <tr>
           <td><strong>${label}</strong></td>
-          <td>${formatMoney(tipoContratoMap[label])}</td>
+          <td>${formatMoney(tipoContratoMap[label].totalVentas)}</td>
+          <td>${tipoContratoMap[label].cantidad}</td>
         </tr>
-      `).join('');
+      `).join('') + `
+        <tr style="border-top:2px solid #cbd5e1; background:#f1f5f9">
+          <td><strong>Total</strong></td>
+          <td><strong>${formatMoney(totalVentasGlobal)}</strong></td>
+          <td><strong>${totalCantidadGlobal}</strong></td>
+        </tr>
+      `;
 
-      // Gráfico circular
+      // Gráfico circular — tooltip muestra Ventas totales (cantidad de operaciones)
       const ctx2 = document.getElementById('chartSegmentacion').getContext('2d');
       if (window._chart2) window._chart2.destroy();
+
+      const segLabels = Object.keys(segmentacionMap);
+      const segCantidades = segLabels.map(k => segmentacionMap[k].cantidad);
+      const segTotalVentas = segLabels.map(k => segmentacionMap[k].totalVentas);
+      const totalCantidad = segCantidades.reduce((a, b) => a + b, 0);
 
       window._chart2 = new Chart(ctx2, {
         type: 'doughnut',
         data: {
-          labels: Object.keys(segmentacionMap),
+          labels: segLabels,
           datasets: [{ 
-            data: Object.values(segmentacionMap), 
+            data: segCantidades, 
             backgroundColor: [COLORS.B2B, COLORS.MARKETPLACE]
           }]
         },
@@ -254,7 +264,17 @@
           maintainAspectRatio: false,
           plugins: {
             legend: { display: true, position: 'bottom' },
-            tooltip: { callbacks: { label: ctx => { const total = Object.values(segmentacionMap).reduce((a, b) => a + b, 0); const percentage = ((ctx.raw / total) * 100).toFixed(1); return `${ctx.label}: ${ctx.raw} ventas (${percentage}%)`; } } }
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const idx = ctx.dataIndex;
+                  const pct = totalCantidad > 0 ? ((segCantidades[idx] / totalCantidad) * 100).toFixed(1) : 0;
+                  return [
+                    `Ventas totales: ${segCantidades[idx]} (${pct}%)`,
+                  ];
+                }
+              }
+            }
           }
         }
       });
@@ -266,21 +286,17 @@
       
       const firstValue = mesSelect.value;
       if (firstValue.startsWith('mes:')) {
-        const mes = firstValue.substring(4);
-        await render(mes, null);
+        await render(firstValue.substring(4), null);
       } else if (firstValue.startsWith('año:')) {
-        const año = firstValue.substring(4);
-        await render(null, año);
+        await render(null, firstValue.substring(4));
       }
 
       mesSelect.addEventListener('change', async (e) => {
         const value = e.target.value;
         if (value.startsWith('mes:')) {
-          const mes = value.substring(4);
-          await render(mes, null);
+          await render(value.substring(4), null);
         } else if (value.startsWith('año:')) {
-          const año = value.substring(4);
-          await render(null, año);
+          await render(null, value.substring(4));
         }
       });
     })();
