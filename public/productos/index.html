@@ -13,6 +13,7 @@
     .mes-selector select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:4px; font-size:14px; cursor:pointer; min-width:200px }
     .total { font-size:18px; font-weight:600; margin-bottom:16px }
     canvas { max-width:100%; height:420px }
+    .section-title { font-weight:600; font-size:14px; color:#0f172a; margin:32px 0 8px }
   </style>
   <script src="../components/auth.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
@@ -29,7 +30,11 @@
       </select>
     </div>
 
+    <div class="section-title">Por categoría</div>
     <canvas id="chart"></canvas>
+
+    <div class="section-title">Detalle por subproducto</div>
+    <canvas id="chartDetalle"></canvas>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -49,7 +54,6 @@
         const mesSelect = document.getElementById('mesSelect');
         mesSelect.innerHTML = '';
         
-        // Agregar meses del año actual
         mesesActual.forEach(mes => {
           const option = document.createElement('option');
           option.value = `mes:${mes}`;
@@ -59,7 +63,6 @@
           mesSelect.appendChild(option);
         });
 
-        // Agregar separador visual
         if (mesesActual.length > 0 && años.length > 0) {
           const separator = document.createElement('option');
           separator.disabled = true;
@@ -67,7 +70,6 @@
           mesSelect.appendChild(separator);
         }
 
-        // Agregar años
         años.forEach(año => {
           const option = document.createElement('option');
           option.value = `año:${año}`;
@@ -75,7 +77,6 @@
           mesSelect.appendChild(option);
         });
         
-        // Seleccionar el primer mes del año actual por defecto
         if (mesesActual.length > 0) {
           mesSelect.value = `mes:${mesesActual[0]}`;
         }
@@ -139,15 +140,13 @@
 
       let data = resultado.datos;
 
+      // --- Gráfico 1: por categoría (con mapProducto, igual que antes) ---
       const productoMap = {};
-      
       data.forEach(d => {
         const productoMapeado = mapProducto(d.producto);
-        
         if (!productoMap[productoMapeado]) {
           productoMap[productoMapeado] = 0;
         }
-        
         productoMap[productoMapeado] += d.totalVentas;
       });
       const sortedEntries = Object.entries(productoMap).sort((a, b) => b[1] - a[1]);
@@ -155,9 +154,7 @@
       const ventas = sortedEntries.map(([, value]) => value);
 
       const ctx = document.getElementById('chart').getContext('2d');
-
       if (window._chart) window._chart.destroy();
-
       window._chart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -170,23 +167,41 @@
         },
         options: {
           responsive: true,
-          interaction: {
-            mode: 'nearest',
-            intersect: false
-          },
+          interaction: { mode: 'nearest', intersect: false },
           plugins: {
-            tooltip: {
-              callbacks: {
-                label: ctx => formatMoney(ctx.raw)
-              }
-            }
+            tooltip: { callbacks: { label: ctx => formatMoney(ctx.raw) } }
           },
           scales: {
-            y: {
-              ticks: {
-                callback: v => formatMoney(v)
-              }
-            }
+            y: { ticks: { callback: v => formatMoney(v) } }
+          }
+        }
+      });
+
+      // --- Gráfico 2: detalle por subproducto (sin mapProducto) ---
+      const sortedDetalle = [...data].sort((a, b) => b.totalVentas - a.totalVentas);
+      const labelsDetalle = sortedDetalle.map(d => d.producto || 'Sin producto');
+      const ventasDetalle = sortedDetalle.map(d => d.totalVentas);
+
+      const ctx2 = document.getElementById('chartDetalle').getContext('2d');
+      if (window._chartDetalle) window._chartDetalle.destroy();
+      window._chartDetalle = new Chart(ctx2, {
+        type: 'bar',
+        data: {
+          labels: labelsDetalle,
+          datasets: [{
+            label: 'Total vendido por subproducto',
+            data: ventasDetalle,
+            backgroundColor: '#a78bfa'
+          }]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'nearest', intersect: false },
+          plugins: {
+            tooltip: { callbacks: { label: ctx => formatMoney(ctx.raw) } }
+          },
+          scales: {
+            y: { ticks: { callback: v => formatMoney(v) } }
           }
         }
       });
@@ -198,21 +213,17 @@
       
       const firstValue = mesSelect.value;
       if (firstValue.startsWith('mes:')) {
-        const mes = firstValue.substring(4);
-        await render(mes, null);
+        await render(firstValue.substring(4), null);
       } else if (firstValue.startsWith('año:')) {
-        const año = firstValue.substring(4);
-        await render(null, año);
+        await render(null, firstValue.substring(4));
       }
 
       mesSelect.addEventListener('change', async (e) => {
         const value = e.target.value;
         if (value.startsWith('mes:')) {
-          const mes = value.substring(4);
-          await render(mes, null);
+          await render(value.substring(4), null);
         } else if (value.startsWith('año:')) {
-          const año = value.substring(4);
-          await render(null, año);
+          await render(null, value.substring(4));
         }
       });
     })();
