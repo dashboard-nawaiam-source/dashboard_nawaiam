@@ -1,3 +1,14 @@
+/*
+NavBarCustom es un componente web que implementa una barra de navegación personalizada
+ para un dashboard de facturación. Incluye un selector de pestañas para navegar entre 
+ diferentes vistas del dashboard y un botón para generar un PDF con la información mostrada.
+
+Al hacer clic en el botón de generar PDF, se abre un modal que permite 
+ seleccionar el período a incluir y las pestañas que se desean exportar. 
+ El PDF se genera utilizando jsPDF, renderizando gráficos con Chart.js en canvases offscreen
+ y extrayendo su dataURL para incluirlos en el PDF. La información de cada pestaña se obtiene 
+ mediante llamadas a endpoints específicos, y se formatea adecuadamente para su presentación en el PDF.
+*/
 class NavBarCustom extends HTMLElement {
   connectedCallback() {
     this.innerHTML = `
