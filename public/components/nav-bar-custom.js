@@ -12,7 +12,7 @@ Al hacer clic en el botón de generar PDF, se abre un modal que permite
 class NavBarCustom extends HTMLElement {
   connectedCallback() {
     this.innerHTML = `
-      <div style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
         <label style="font-weight:600;margin-right:8px">Dashboard</label>
         <select id="nav-select">
           <option value="/facturas">General</option>
@@ -22,6 +22,8 @@ class NavBarCustom extends HTMLElement {
           <option value="/empresas">Empresas</option>
           <option value="/kpis">KPIs</option>
         </select>
+      </div>
+      <div style="margin-bottom:16px">
         <button id="nav-pdf-btn" style="
           padding:7px 16px;
           background:#0ea5a4;
@@ -31,7 +33,7 @@ class NavBarCustom extends HTMLElement {
           font-weight:600;
           font-size:13px;
           cursor:pointer;
-          display:flex;
+          display:inline-flex;
           align-items:center;
           gap:6px;
         ">
@@ -294,20 +296,30 @@ class NavBarCustom extends HTMLElement {
     }
   }
 
-  // Renderiza un Chart.js en un canvas offscreen y devuelve dataURL
-  async _renderChart(type, data, options, width = 700, height = 380) {
+  // Renderiza un Chart.js en un canvas offscreen y devuelve { imgData, ratio }
+  // ratio: ancho/alto del grafico en el PDF (default 2.8 = 182mm / 65mm)
+  async _renderChart(type, data, options, ratio = 2.8) {
+    const SCALE = 3; // 3x para nitidez (~300dpi)
+    const baseW = Math.round(182 * 96 / 25.4); // 182mm a 96dpi ~ 690px
+    const baseH = Math.round(baseW / ratio);
     const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width  = baseW * SCALE;
+    canvas.height = baseH * SCALE;
     canvas.style.position = 'absolute';
     canvas.style.left = '-9999px';
     document.body.appendChild(canvas);
-    const chart = new Chart(canvas.getContext('2d'), { type, data, options: { ...options, animation: false, responsive: false } });
-    await new Promise(r => setTimeout(r, 100));
+    const ctx = canvas.getContext('2d');
+    ctx.scale(SCALE, SCALE);
+    const chart = new Chart(ctx, {
+      type,
+      data,
+      options: { ...options, animation: false, responsive: false, devicePixelRatio: SCALE }
+    });
+    await new Promise(r => setTimeout(r, 150));
     const imgData = canvas.toDataURL('image/png');
     chart.destroy();
     document.body.removeChild(canvas);
-    return imgData;
+    return { imgData, ratio };
   }
 
   // Construye la sección de cada pestaña: { title, chartImgs[], tableHtml }
@@ -332,7 +344,7 @@ class NavBarCustom extends HTMLElement {
       const chartImg = await this._renderChart('bar', {
         labels,
         datasets: [{ label:'Comparación (normalizada)', data:scaled, backgroundColor:colors }]
-      }, { plugins:{ legend:{display:false} }, scales:{ y:{ beginAtZero:true, ticks:{callback:v=>v+'%'} } } });
+      }, { plugins:{ legend:{display:false} }, scales:{ y:{ beginAtZero:true, ticks:{callback:v=>v+'%'} } } }, 2.8);
 
       const rows = [
         `<tr><td><strong>${totalLabel}</strong></td><td>${fmt(totalMostrado)}</td></tr>`,
@@ -358,14 +370,14 @@ class NavBarCustom extends HTMLElement {
       const img1 = await this._renderChart('bar', {
         labels: catEntries.map(([k])=>k),
         datasets: [{ label:'Por categoría', data:catEntries.map(([,v])=>v), backgroundColor:'#60a5fa' }]
-      }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } });
+      }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } }, 2.8);
 
       // Gráfico 2: subproductos
       const sorted = [...datos].sort((a,b)=>b.totalVentas-a.totalVentas);
       const img2 = await this._renderChart('bar', {
         labels: sorted.map(d=>d.producto||'Sin producto'),
         datasets: [{ label:'Por subproducto', data:sorted.map(d=>d.totalVentas), backgroundColor:'#a78bfa' }]
-      }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } });
+      }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } }, 2.8);
 
       const rows = catEntries.map(([k,v]) => `<tr><td><strong>${k}</strong></td><td>${fmt(v)}</td></tr>`).join('');
       return { title:'Ventas por Producto', chartImgs:[img1,img2], tableHtml:rows, tableHeaders:['Categoría','Total'] };
@@ -377,7 +389,7 @@ class NavBarCustom extends HTMLElement {
       const img = await this._renderChart('bar', {
         labels: datos.map(d=>d.vendedor),
         datasets: [{ label:'Ingresos', data:datos.map(d=>d.ingresos), backgroundColor:'#22c55e' }]
-      }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } });
+      }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } }, 2.8);
 
       const rows = datos.map(d => `<tr><td><strong>${d.vendedor}</strong></td><td>${fmt(d.ingresos)}</td><td>${d.cantidadVentas}</td></tr>`).join('');
       return { title:'Ranking Vendedores', chartImgs:[img], tableHtml:rows, tableHeaders:['Vendedor','Ingresos','Ventas'] };
@@ -404,7 +416,7 @@ class NavBarCustom extends HTMLElement {
       const img1 = await this._renderChart('bar', {
         labels,
         datasets: [{ label:'Total de ventas', data:labels.map(l=>tipoMap[l].totalVentas), backgroundColor:labels.map(l=>CTCOLORS[l]||'#60a5fa') }]
-      }, { maintainAspectRatio:false, scales:{ y:{beginAtZero:true} } });
+      }, { scales:{ y:{beginAtZero:true} } }, 2.8);
 
       const segLabels = Object.keys(segMap);
       const segCants = segLabels.map(k=>segMap[k].cantidad);
@@ -412,7 +424,7 @@ class NavBarCustom extends HTMLElement {
       const img2 = await this._renderChart('doughnut', {
         labels: segLabels,
         datasets: [{ data:segCants, backgroundColor:['#0ea5a4','#f97316'] }]
-      }, { plugins:{ legend:{display:true,position:'bottom'} } }, 400, 300);
+      }, { plugins:{ legend:{display:true,position:'bottom'} } }, 1.2);
 
       const totalV = labels.reduce((s,l)=>s+tipoMap[l].totalVentas,0);
       const totalC = labels.reduce((s,l)=>s+tipoMap[l].cantidad,0);
@@ -448,7 +460,7 @@ class NavBarCustom extends HTMLElement {
         const img = await this._renderChart('bar', {
           labels: lbls,
           datasets: [{ label:region, data:vals, backgroundColor:cols }]
-        }, { plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{beginAtZero:true,ticks:{callback:v=>fmt(v)}} } });
+        }, { plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{beginAtZero:true,ticks:{callback:v=>fmt(v)}} } }, 2.8);
         chartImgs.push({ img, region });
       }
 
@@ -541,8 +553,8 @@ class NavBarCustom extends HTMLElement {
         // Gráficos
         if (section.chartImgs && section.chartImgs.length) {
           for (let ci = 0; ci < section.chartImgs.length; ci++) {
-            const imgData = section.chartImgs[ci];
-            const chartH = 65;
+            const { imgData, ratio } = section.chartImgs[ci];
+            const chartH = Math.round(contentW / ratio); // altura exacta según ratio
             if (y + chartH > pageH - margin) { doc.addPage(); y = margin; }
 
             if (section.chartLabels && section.chartLabels[ci]) {
