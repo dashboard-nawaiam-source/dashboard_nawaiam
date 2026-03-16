@@ -20,6 +20,16 @@
     .demo-data td { padding: 8px; border: 1px solid #e2e8f0; font-size: 14px; }
     .loading { text-align:center; padding:20px; color:#64748b }
     .dim-row td { background: #f8fafc; color: #475569; }
+
+    /* Toggle Prueba Piloto */
+    .pp-toggle-wrapper { display:flex; align-items:center; gap:10px; margin-bottom:20px }
+    .pp-toggle-wrapper label { font-size:13px; font-weight:600; color:#475569; cursor:pointer }
+    .toggle-switch { position:relative; display:inline-block; width:36px; height:20px }
+    .toggle-switch input { opacity:0; width:0; height:0 }
+    .toggle-slider { position:absolute; cursor:pointer; inset:0; background:#e2e8f0; border-radius:20px; transition:.2s }
+    .toggle-slider:before { position:absolute; content:""; height:14px; width:14px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s }
+    .toggle-switch input:checked + .toggle-slider { background:#0ea5a4 }
+    .toggle-switch input:checked + .toggle-slider:before { transform:translateX(16px) }
   </style>
   <script src="../components/auth.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
@@ -34,6 +44,14 @@
       <select id="mesSelect">
         <option value="">Cargando...</option>
       </select>
+    </div>
+
+    <div class="pp-toggle-wrapper">
+      <label class="toggle-switch">
+        <input type="checkbox" id="togglePP" />
+        <span class="toggle-slider"></span>
+      </label>
+      <label for="togglePP" id="togglePPLabel">Incluir Prueba Piloto</label>
     </div>
 
     <div class="subtitle" id="mes">Cargando...</div>
@@ -62,6 +80,10 @@
       window.location.href = '/login';
     }
 
+    // Estado del toggle — excluido por defecto
+    let _incluirPP = false;
+    let _lastData = null;
+
     async function cargarMesesYAños() {
       try {
         const res = await Auth.fetch('/facturas/meses');
@@ -72,7 +94,6 @@
         const mesSelect = document.getElementById('mesSelect');
         mesSelect.innerHTML = '';
         
-        // Agregar meses del año actual
         mesesActual.forEach(mes => {
           const option = document.createElement('option');
           option.value = `mes:${mes}`;
@@ -82,7 +103,6 @@
           mesSelect.appendChild(option);
         });
 
-        // Agregar separador visual
         if (mesesActual.length > 0 && años.length > 0) {
           const separator = document.createElement('option');
           separator.disabled = true;
@@ -90,7 +110,6 @@
           mesSelect.appendChild(separator);
         }
 
-        // Agregar años
         años.forEach(año => {
           const option = document.createElement('option');
           option.value = `año:${año}`;
@@ -98,7 +117,6 @@
           mesSelect.appendChild(option);
         });
         
-        // Seleccionar el primer mes del año actual por defecto
         if (mesesActual.length > 0) {
           mesSelect.value = `mes:${mesesActual[0]}`;
         }
@@ -142,13 +160,34 @@
 
     function render(d) {
       document.getElementById('mes').textContent = '';
-      document.getElementById('totalBruto').textContent = `Total: ${formatMoney(d.totalVentas)}`;
+
+      let dimEntries = Object.entries(d.dimensiones || {});
+
+      // Si el toggle está apagado (excluir PP), filtrar prueba piloto de las dimensiones
+      if (!_incluirPP) {
+        dimEntries = dimEntries.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
+      }
+
+      const totalMostrado = dimEntries.reduce((acc, [, v]) => acc + Number(v), 0);
+      // Si hay dimensiones, el total mostrado es la suma de las dimensiones filtradas.
+      // Si no hay dimensiones, usar totalVentas tal cual.
+      const totalBase = dimEntries.length > 0 ? totalMostrado : Number(d.totalVentas || 0);
+
+      // "Total sin prueba piloto" cuando PP está excluido, o "Total" cuando está incluido
+      const totalLabel = _incluirPP ? 'Total' : 'Total sin prueba piloto';
+
+      document.getElementById('totalBruto').textContent = `Total: ${formatMoney(_incluirPP ? d.totalVentas : totalBase)}`;
+
       const ctx = document.getElementById('chart').getContext('2d');
 
-      const dimEntries = Object.entries(d.dimensiones || {});
-      const pilotoVal = dimEntries.reduce((acc, [k, v]) => acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
-      const labels = ['Total sin prueba piloto', ...dimEntries.map(([dim]) => dim), 'Promedio por factura', 'Cantidad facturas'];
-      const values = [Number(d.totalVentas || 0) - pilotoVal, ...dimEntries.map(([, v]) => v), d.promedioPorFactura, d.cantidadFacturas];
+      const pilotoVal = _incluirPP
+        ? 0
+        : Object.entries(d.dimensiones || {}).reduce((acc, [k, v]) => acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
+
+      const totalSinPP = Number(d.totalVentas || 0) - pilotoVal;
+
+      const labels = [totalLabel, ...dimEntries.map(([dim]) => dim), 'Promedio por factura', 'Cantidad facturas'];
+      const values = [totalSinPP, ...dimEntries.map(([, v]) => v), d.promedioPorFactura, d.cantidadFacturas];
       const DIM_COLORS = ['#22c55e', '#60a5fa', '#f97316', '#a78bfa', '#f43f5e', '#facc15', '#34d399', '#fb923c'];
       const colors = [
         '#0ea5a4',
@@ -208,8 +247,8 @@
       const tbody = document.getElementById('demoTable');
       tbody.innerHTML = `
         <tr>
-          <td><strong>Total sin prueba piloto</strong></td>
-          <td>${formatMoney(Number(d.totalVentas || 0) - pilotoVal)}</td>
+          <td><strong>${totalLabel}</strong></td>
+          <td>${formatMoney(totalSinPP)}</td>
         </tr>
         ${filaDimensiones}
         <tr>
@@ -221,7 +260,14 @@
           <td>${d.cantidadFacturas}</td>
         </tr>
       `;
-}
+    }
+
+    // Toggle event
+    document.getElementById('togglePP').addEventListener('change', function() {
+      _incluirPP = this.checked;
+      document.getElementById('togglePPLabel').textContent = _incluirPP ? 'Incluir Prueba Piloto' : 'Incluir Prueba Piloto';
+      if (_lastData) render(_lastData);
+    });
 
     (async () => {
       await cargarMesesYAños();
@@ -230,20 +276,20 @@
       const firstValue = mesSelect.value;
       if (firstValue.startsWith('mes:')) {
         const data = await fetchDashboard(firstValue.substring(4), null);
-        if (data) render(data);
+        if (data) { _lastData = data; render(data); }
       } else if (firstValue.startsWith('año:')) {
         const data = await fetchDashboard(null, firstValue.substring(4));
-        if (data) render(data);
+        if (data) { _lastData = data; render(data); }
       }
 
       mesSelect.addEventListener('change', async (e) => {
         const value = e.target.value;
         if (value.startsWith('mes:')) {
           const data = await fetchDashboard(value.substring(4), null);
-          if (data) render(data);
+          if (data) { _lastData = data; render(data); }
         } else if (value.startsWith('año:')) {
           const data = await fetchDashboard(null, value.substring(4));
-          if (data) render(data);
+          if (data) { _lastData = data; render(data); }
         }
       });
     })();
