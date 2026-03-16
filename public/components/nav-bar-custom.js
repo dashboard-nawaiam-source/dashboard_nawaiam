@@ -1,14 +1,3 @@
-/*
-NavBarCustom es un componente web que implementa una barra de navegación personalizada
- para un dashboard de facturación. Incluye un selector de pestañas para navegar entre 
- diferentes vistas del dashboard y un botón para generar un PDF con la información mostrada.
-
-Al hacer clic en el botón de generar PDF, se abre un modal que permite 
- seleccionar el período a incluir y las pestañas que se desean exportar. 
- El PDF se genera utilizando jsPDF, renderizando gráficos con Chart.js en canvases offscreen
- y extrayendo su dataURL para incluirlos en el PDF. La información de cada pestaña se obtiene 
- mediante llamadas a endpoints específicos, y se formatea adecuadamente para su presentación en el PDF.
-*/
 class NavBarCustom extends HTMLElement {
   connectedCallback() {
     this.innerHTML = `
@@ -297,23 +286,19 @@ class NavBarCustom extends HTMLElement {
   }
 
   // Renderiza un Chart.js en un canvas offscreen y devuelve { imgData, ratio }
-  // ratio: ancho/alto del grafico en el PDF (default 2.8 = 182mm / 65mm)
   async _renderChart(type, data, options, ratio = 2.8) {
-    const SCALE = 3; // 3x para nitidez (~300dpi)
-    const baseW = Math.round(182 * 96 / 25.4); // 182mm a 96dpi ~ 690px
+    const baseW = 700;
     const baseH = Math.round(baseW / ratio);
     const canvas = document.createElement('canvas');
-    canvas.width  = baseW * SCALE;
-    canvas.height = baseH * SCALE;
+    canvas.width  = baseW;
+    canvas.height = baseH;
     canvas.style.position = 'absolute';
     canvas.style.left = '-9999px';
     document.body.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
-    ctx.scale(SCALE, SCALE);
-    const chart = new Chart(ctx, {
+    const chart = new Chart(canvas.getContext('2d'), {
       type,
       data,
-      options: { ...options, animation: false, responsive: false, devicePixelRatio: SCALE }
+      options: { ...options, animation: false, responsive: false }
     });
     await new Promise(r => setTimeout(r, 150));
     const imgData = canvas.toDataURL('image/png');
