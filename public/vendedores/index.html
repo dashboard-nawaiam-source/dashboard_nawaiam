@@ -8,26 +8,19 @@
     body { font-family: system-ui, Arial; background:#f7fafc; padding:24px }
     .card { max-width:1000px; margin:auto; background:#fff; padding:20px; border-radius:8px }
     h1 { margin-bottom:4px }
-    .mes-selector { margin-bottom:24px; display:flex; gap:12px; align-items:center }
-    .mes-selector label { font-weight:600; font-size:14px }
-    .mes-selector select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:4px; font-size:14px; cursor:pointer; min-width:200px }
     .total { font-size:16px; font-weight:600; margin-bottom:16px }
     canvas { max-width:100%; height:420px }
   </style>
   <script src="../components/auth.js"></script>
+  <script src="../components/period-selector.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
 </head>
 <body>
   <nav-bar-custom></nav-bar-custom>
   <div class="card">
     <h1>Ranking de vendedores</h1>
-    
-    <div class="mes-selector">
-      <label for="mesSelect">Período:</label>
-      <select id="mesSelect">
-        <option value="">Cargando...</option>
-      </select>
-    </div>
+
+    <div id="periodoContainer"></div>
 
     <div id="total" class="total">Cargando...</div>
     <canvas id="chart"></canvas>
@@ -35,196 +28,96 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
-    // Verificar autenticación
-    if (!Auth.isAuthenticated()) {
-      window.location.href = '/login';
-    }
-
-    async function cargarMesesYAños() {
-      try {
-        const res = await Auth.fetch('/facturas/meses');
-        const json = await res.json();
-        const mesesActual = json.data.mesesActual || [];
-        const años = json.data.años || [];
-        
-        const mesSelect = document.getElementById('mesSelect');
-        mesSelect.innerHTML = '';
-        
-        // Agregar meses del año actual
-        mesesActual.forEach(mes => {
-          const option = document.createElement('option');
-          option.value = `mes:${mes}`;
-          const [mesNum, año] = mes.split('-');
-          const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-          option.textContent = `${mesesNombres[parseInt(mesNum) - 1]} ${año}`;
-          mesSelect.appendChild(option);
-        });
-
-        // Agregar separador visual
-        if (mesesActual.length > 0 && años.length > 0) {
-          const separator = document.createElement('option');
-          separator.disabled = true;
-          separator.textContent = 'Acumulados Anuales:';
-          mesSelect.appendChild(separator);
-        }
-
-        // Agregar años
-        años.forEach(año => {
-          const option = document.createElement('option');
-          option.value = `año:${año}`;
-          option.textContent = `${año}`;
-          mesSelect.appendChild(option);
-        });
-        
-        // Seleccionar el primer mes del año actual por defecto
-        if (mesesActual.length > 0) {
-          mesSelect.value = `mes:${mesesActual[0]}`;
-        }
-      } catch (e) {
-        if (e.message === 'AUTH_REQUIRED') {
-          window.location.href = '/login';
-          return;
-        }
-        console.error('Error cargando meses y años:', e);
-      }
-    }
+    if (!Auth.isAuthenticated()) { window.location.href = '/login'; }
 
     async function fetchData(mes, año) {
       try {
         let url = '/facturas/ranking-vendedores';
         const params = [];
         if (mes) params.push(`mes=${mes}`);
-        if (año) params.push(`año=${año}`);
-        if (params.length > 0) url += '?' + params.join('&');
-
+        else if (año) params.push(`año=${año}`);
+        if (params.length) url += '?' + params.join('&');
         const res = await Auth.fetch(url);
         const json = await res.json();
         return json.data;
       } catch(e) {
-        if (e.message === 'AUTH_REQUIRED') {
-          window.location.href = '/login';
-          return null;
-        }
-        console.error(e);
-        return null;
+        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return null; }
+        console.error(e); return null;
       }
     }
 
     function formatMoney(v) {
-      return new Intl.NumberFormat('es-AR', {
-        style: 'currency',
-        currency: 'ARS'
-      }).format(v);
+      return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(v);
     }
 
-    async function render(mes, año) {
-      let resultado = await fetchData(mes, año);
+    async function render(mes, año, includePP) {
+      const resultado = await fetchData(mes, año);
       if (!resultado) return;
 
-      let data = resultado.datos;
+      // Cada item tiene ingresos (total) e ingresospp (solo PP)
+      // Si excluimos PP, restamos ingresospp de ingresos
+      let data = resultado.datos.map(d => ({
+        ...d,
+        ingresos: includePP ? d.ingresos : (d.ingresos - (d.ingresospp || 0))
+      }));
 
       data.sort((a, b) => b.ingresos - a.ingresos);
 
       const totalIngresos = data.reduce((s, d) => s + d.ingresos, 0);
-      const totalVentas = data.reduce((s, d) => s + d.cantidadVentas, 0);
+      const totalVentas   = data.reduce((s, d) => s + d.cantidadVentas, 0);
 
       document.getElementById('total').textContent =
         `Ingresos totales: ${formatMoney(totalIngresos)} · Ventas: ${totalVentas}`;
 
-      const labels = data.map(d => d.vendedor);
       const ingresos = data.map(d => d.ingresos);
-      const ventas = data.map(d => d.cantidadVentas);
-
-      const maxVentas = Math.max(...ventas);
+      const ventas   = data.map(d => d.cantidadVentas);
+      const maxVentas   = Math.max(...ventas);
       const maxIngresos = Math.max(...ingresos);
-      const ventasEscaladas = ventas.map(v => (v / maxVentas) * maxIngresos);
+      const ventasEscaladas = ventas.map(v => maxVentas ? (v / maxVentas) * maxIngresos : 0);
 
       const ctx = document.getElementById('chart').getContext('2d');
-
       if (window._chart) window._chart.destroy();
 
       window._chart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels,
-            datasets: [
-            {
-                label: 'Ingresos',
-                data: ingresos,
-                backgroundColor: '#22c55e',
-                yAxisID: 'y'
-            },
-            {
-                label: 'Cantidad de ventas',
-                data: ventasEscaladas,
-                backgroundColor: '#60a5fa',
-                yAxisID: 'y'
-            }
-            ]
+          labels: data.map(d => d.vendedor),
+          datasets: [
+            { label: 'Ingresos',            data: ingresos,        backgroundColor: '#22c55e', yAxisID: 'y' },
+            { label: 'Cantidad de ventas',  data: ventasEscaladas, backgroundColor: '#60a5fa', yAxisID: 'y' }
+          ]
         },
         options: {
-            responsive: true,
-            interaction: {
-              mode: 'nearest',
-              intersect: false
-            },
-            scales: {
+          responsive: true,
+          interaction: { mode: 'nearest', intersect: false },
+          scales: {
             y: {
-                type: 'linear',
-                position: 'left',
-                beginAtZero: true,
-                ticks: {
-                callback: v => formatMoney(v)
-                },
-                title: {
-                display: true,
-                text: 'Ingresos / Escala de ventas'
-                }
+              type: 'linear', position: 'left', beginAtZero: true,
+              ticks: { callback: v => formatMoney(v) },
+              title: { display: true, text: 'Ingresos / Escala de ventas' }
             }
-            },
-            plugins: {
+          },
+          plugins: {
             tooltip: {
-                callbacks: {
+              callbacks: {
                 label: ctx => {
-                    if (ctx.dataset.label === 'Ingresos') {
-                    const idx = ctx.dataIndex;
-                    return `Ingresos: ${formatMoney(ingresos[idx])}`;
-                    } else {
-                    const idx = ctx.dataIndex;
-                    return `Ventas: ${ventas[idx]} unidades`;
-                    }
+                  const idx = ctx.dataIndex;
+                  if (ctx.dataset.label === 'Ingresos') return `Ingresos: ${formatMoney(ingresos[idx])}`;
+                  return `Ventas: ${ventas[idx]} unidades`;
                 }
-                }
+              }
             }
-            }
-        }
-        });
-    }
-
-    (async () => {
-      await cargarMesesYAños();
-      const mesSelect = document.getElementById('mesSelect');
-      
-      const firstValue = mesSelect.value;
-      if (firstValue.startsWith('mes:')) {
-        const mes = firstValue.substring(4);
-        await render(mes, null);
-      } else if (firstValue.startsWith('año:')) {
-        const año = firstValue.substring(4);
-        await render(null, año);
-      }
-
-      mesSelect.addEventListener('change', async (e) => {
-        const value = e.target.value;
-        if (value.startsWith('mes:')) {
-          const mes = value.substring(4);
-          await render(mes, null);
-        } else if (value.startsWith('año:')) {
-          const año = value.substring(4);
-          await render(null, año);
+          }
         }
       });
-    })();
+    }
+
+    const ps = new PeriodSelector({
+      container:    document.getElementById('periodoContainer'),
+      showPPToggle: true,
+      onChange: ({ mes, año, includePP }) => render(mes, año, includePP)
+    });
+    ps.init();
   </script>
 </body>
 </html>
