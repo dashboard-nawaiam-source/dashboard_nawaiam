@@ -1,14 +1,3 @@
-/*
-NavBarCustom es un componente web que implementa una barra de navegación personalizada
- para un dashboard de facturación. Incluye un selector de pestañas para navegar entre 
- diferentes vistas del dashboard y un botón para generar un PDF con la información mostrada.
-
-Al hacer clic en el botón de generar PDF, se abre un modal que permite 
- seleccionar el período a incluir y las pestañas que se desean exportar. 
- El PDF se genera utilizando jsPDF, renderizando gráficos con Chart.js en canvases offscreen
- y extrayendo su dataURL para incluirlos en el PDF. La información de cada pestaña se obtiene 
- mediante llamadas a endpoints específicos, y se formatea adecuadamente para su presentación en el PDF.
-*/
 class NavBarCustom extends HTMLElement {
   connectedCallback() {
     this.innerHTML = `
@@ -63,16 +52,24 @@ class NavBarCustom extends HTMLElement {
           <h2 style="font-size:17px;font-weight:700;margin-bottom:4px;color:#0f172a">Generar PDF</h2>
           <p style="font-size:13px;color:#64748b;margin-bottom:20px">Seleccioná el período y las pestañas a incluir.</p>
 
-          <!-- Selector período -->
+          <!-- Selector período en cascada -->
           <div style="margin-bottom:18px">
-            <label style="font-size:13px;font-weight:600;color:#475569;display:block;margin-bottom:6px">Período</label>
-            <select id="pdf-periodo-select" style="
-              width:100%;padding:8px 10px;
-              border:1px solid #e2e8f0;border-radius:6px;
-              font-size:14px;
-            ">
-              <option value="">Cargando...</option>
-            </select>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <label style="font-size:13px;font-weight:600;color:#475569;width:40px">Año:</label>
+              <select id="pdf-año-select" style="
+                padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;min-width:150px;
+              ">
+                <option value="">Cargando...</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <label style="font-size:13px;font-weight:600;color:#475569;width:40px">Mes:</label>
+              <select id="pdf-mes-select" style="
+                padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;min-width:150px;
+              ">
+                <option value="">No especificar</option>
+              </select>
+            </div>
           </div>
 
           <!-- Pestañas -->
@@ -158,12 +155,12 @@ class NavBarCustom extends HTMLElement {
 
     // Tabs config
     const TABS = [
-      { id: 'general',   label: 'General',             endpoint: 'dashboardGeneral',    available: true },
-      { id: 'productos', label: 'Ventas por Producto',  endpoint: 'ventas-por-producto', available: true },
-      { id: 'vendedores',label: 'Ranking Vendedores',   endpoint: 'ranking-vendedores',  available: true },
-      { id: 'contratos', label: 'Contratos',            endpoint: 'contratos',           available: true },
-      { id: 'empresas',  label: 'Empresas',             endpoint: 'empresas',            available: true },
-      { id: 'kpis',      label: 'KPIs (no disponible)', endpoint: null,                  available: false },
+      { id: 'general',    label: 'General',             endpoint: 'dashboardGeneral',    available: true },
+      { id: 'productos',  label: 'Ventas por Producto',  endpoint: 'ventas-por-producto', available: true },
+      { id: 'vendedores', label: 'Ranking Vendedores',   endpoint: 'ranking-vendedores',  available: true },
+      { id: 'contratos',  label: 'Contratos',            endpoint: 'contratos',           available: true },
+      { id: 'empresas',   label: 'Empresas',             endpoint: 'empresas',            available: true },
+      { id: 'kpis',       label: 'KPIs (no disponible)', endpoint: null,                  available: false },
     ];
 
     // Render checkboxes
@@ -179,27 +176,27 @@ class NavBarCustom extends HTMLElement {
       tabsList.appendChild(row);
     });
 
-    // Toggle PP visibility when General checkbox changes
+    // Toggle PP visibility
     const togglePPRow = () => {
       const generalCb = this.querySelector('[data-tab="general"]');
-      const ppRow = this.querySelector('#pdf-pp-row');
+      const ppRow     = this.querySelector('#pdf-pp-row');
       ppRow.style.display = generalCb.checked ? 'flex' : 'none';
     };
     this.querySelector('[data-tab="general"]').addEventListener('change', togglePPRow);
 
     // Toggle PP slider visual
-    const ppInput = this.querySelector('#pdf-toggle-pp');
+    const ppInput  = this.querySelector('#pdf-toggle-pp');
     const ppSlider = this.querySelector('#pdf-pp-slider');
-    const ppKnob = this.querySelector('#pdf-pp-knob');
+    const ppKnob   = this.querySelector('#pdf-pp-knob');
     ppInput.addEventListener('change', () => {
-      if (ppInput.checked) {
-        ppSlider.style.background = '#0ea5a4';
-        ppKnob.style.transform = 'translateX(16px)';
-      } else {
-        ppSlider.style.background = '#e2e8f0';
-        ppKnob.style.transform = 'translateX(0)';
-      }
+      ppSlider.style.background = ppInput.checked ? '#0ea5a4' : '#e2e8f0';
+      ppKnob.style.transform    = ppInput.checked ? 'translateX(16px)' : 'translateX(0)';
     });
+
+    // Año → Mes cascade
+    const añoSelect = this.querySelector('#pdf-año-select');
+    const mesSelect = this.querySelector('#pdf-mes-select');
+    añoSelect.addEventListener('change', () => this._llenarMesesPDF(añoSelect.value));
 
     // Open/close modal
     const overlay = this.querySelector('#pdf-modal-overlay');
@@ -214,48 +211,67 @@ class NavBarCustom extends HTMLElement {
       if (e.target === overlay) overlay.style.display = 'none';
     });
 
-    // Generate
     this.querySelector('#pdf-generate-btn').addEventListener('click', () => this._generarPDF());
   }
 
+  // ─── Carga años y meses ──────────────────────────────────────────────────────
   async _cargarPeriodos() {
     try {
       const token = localStorage.getItem('dashboard_token');
-      const res = await fetch('/facturas/meses', { headers: { 'x-auth-token': token } });
-      const json = await res.json();
-      const mesesActual = json.data.mesesActual || [];
-      const años = json.data.años || [];
+      const res   = await fetch('/facturas/meses', { headers: { 'x-auth-token': token } });
+      const json  = await res.json();
 
-      const sel = this.querySelector('#pdf-periodo-select');
-      sel.innerHTML = '';
-      const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      this._mesesPorAño = json.data.mesesPorAño || {};
+      const años        = json.data.años || [];
 
-      mesesActual.forEach(mes => {
-        const opt = document.createElement('option');
-        opt.value = `mes:${mes}`;
-        const [mn, an] = mes.split('-');
-        opt.textContent = `${mesesNombres[parseInt(mn)-1]} ${an}`;
-        sel.appendChild(opt);
-      });
-      if (mesesActual.length && años.length) {
-        const sep = document.createElement('option');
-        sep.disabled = true; sep.textContent = 'Acumulados Anuales:';
-        sel.appendChild(sep);
+      // Fallback para backend viejo
+      if (!Object.keys(this._mesesPorAño).length && json.data.mesesActual) {
+        const añoActual = años[0] || new Date().getFullYear().toString();
+        this._mesesPorAño[añoActual] = json.data.mesesActual;
       }
-      años.forEach(año => {
+
+      const añoSelect = this.querySelector('#pdf-año-select');
+      añoSelect.innerHTML = '';
+      años.forEach(a => {
         const opt = document.createElement('option');
-        opt.value = `año:${año}`;
-        opt.textContent = `${año}`;
-        sel.appendChild(opt);
+        opt.value = a; opt.textContent = a;
+        añoSelect.appendChild(opt);
       });
-    } catch(e) { console.error('Error cargando períodos:', e); }
+
+      if (años.length) {
+        añoSelect.value = años[0];
+        this._llenarMesesPDF(años[0]);
+      }
+    } catch(e) { console.error('Error cargando períodos PDF:', e); }
   }
 
+  _llenarMesesPDF(año) {
+    const NOMBRES  = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const meses    = (this._mesesPorAño || {})[año] || [];
+    const mesSelect = this.querySelector('#pdf-mes-select');
+
+    mesSelect.innerHTML = '';
+    const optAnual = document.createElement('option');
+    optAnual.value = ''; optAnual.textContent = 'No especificar';
+    mesSelect.appendChild(optAnual);
+
+    meses.forEach(m => {
+      const [mn] = m.split('-');
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = NOMBRES[parseInt(mn) - 1];
+      mesSelect.appendChild(opt);
+    });
+
+    // Seleccionar el primer mes por defecto
+    if (meses.length) mesSelect.value = meses[0];
+  }
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
   async _fetchJSON(endpoint, mes, año) {
     const token = localStorage.getItem('dashboard_token');
     const params = [];
     if (mes) params.push(`mes=${mes}`);
-    if (año) params.push(`año=${año}`);
+    else if (año) params.push(`año=${año}`);
     const url = `/facturas/${endpoint}${params.length ? '?' + params.join('&') : ''}`;
     const res = await fetch(url, { headers: { 'x-auth-token': token } });
     const json = await res.json();
@@ -268,20 +284,20 @@ class NavBarCustom extends HTMLElement {
 
   _mapProducto(producto) {
     const c = producto?.trim().toLowerCase() || '';
-    if (c.includes('otros')) return 'Otros Servicios';
+    if (c.includes('otros'))          return 'Otros Servicios';
     if (c.includes('representacion')) return 'Representaciones';
-    if (c.includes('vocacional')) return 'Orientación Vocacional';
-    if (c.includes('nawi')) return 'Nawi';
+    if (c.includes('vocacional'))     return 'Orientación Vocacional';
+    if (c.includes('nawi'))           return 'Nawi';
     return 'Nawaiam';
   }
 
   _mapEmpresa(empresa) {
     const c = empresa?.trim().toLowerCase() || '';
     switch(c) {
-      case 'nawaiam sa': return 'Argentina';
-      case 'nawaiam españa': return 'España';
+      case 'nawaiam sa':          return 'Argentina';
+      case 'nawaiam españa':      return 'España';
       case 'tu primera pega spa': return 'Chile';
-      default: return 'Otros';
+      default:                    return 'Otros';
     }
   }
 
@@ -296,7 +312,6 @@ class NavBarCustom extends HTMLElement {
     }
   }
 
-  // Renderiza un Chart.js en un canvas offscreen y devuelve { imgData, ratio }
   async _renderChart(type, data, options, ratio = 2.8) {
     const baseW = 700;
     const baseH = Math.round(baseW / ratio);
@@ -318,23 +333,22 @@ class NavBarCustom extends HTMLElement {
     return { imgData, ratio };
   }
 
-  // Construye la sección de cada pestaña: { title, chartImgs[], tableHtml }
   async _buildSection(tabId, mes, año, incluirPP) {
-    const fmt = this._formatMoney.bind(this);
+    const fmt       = this._formatMoney.bind(this);
     const DIM_COLORS = ['#22c55e','#60a5fa','#f97316','#a78bfa','#f43f5e','#facc15','#34d399','#fb923c'];
 
     if (tabId === 'general') {
       const d = await this._fetchJSON('dashboardGeneral', mes, año);
       let dimEntries = Object.entries(d.dimensiones || {});
       if (!incluirPP) dimEntries = dimEntries.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
-      const pilotoVal = incluirPP ? 0 : Object.entries(d.dimensiones || {}).reduce((a,[k,v]) => a + (k.trim().toLowerCase()==='prueba piloto'?Number(v):0), 0);
-      const totalLabel = incluirPP ? 'Total' : 'Total sin prueba piloto';
+      const pilotoVal   = incluirPP ? 0 : Object.entries(d.dimensiones || {}).reduce((a,[k,v]) => a + (k.trim().toLowerCase()==='prueba piloto'?Number(v):0), 0);
+      const totalLabel  = incluirPP ? 'Total' : 'Total sin prueba piloto';
       const totalMostrado = Number(d.totalVentas||0) - pilotoVal;
 
       const labels = [totalLabel, ...dimEntries.map(([k])=>k), 'Promedio por factura', 'Cantidad facturas'];
       const values = [totalMostrado, ...dimEntries.map(([,v])=>v), d.promedioPorFactura, d.cantidadFacturas];
       const colors = ['#0ea5a4', ...dimEntries.map((_,i)=>DIM_COLORS[i%DIM_COLORS.length]), '#f97316','#60a5fa'];
-      const max = Math.max(...values.map(v=>Math.abs(v)||0));
+      const max    = Math.max(...values.map(v=>Math.abs(v)||0));
       const scaled = values.map(v => max ? (v/max)*100 : 0);
 
       const chartImg = await this._renderChart('bar', {
@@ -353,10 +367,11 @@ class NavBarCustom extends HTMLElement {
     }
 
     if (tabId === 'productos') {
-      const d = await this._fetchJSON('ventas-por-producto', mes, año);
-      const datos = d.datos || [];
+      const d    = await this._fetchJSON('ventas-por-producto', mes, año);
+      const datos = incluirPP
+        ? (d.datos || [])
+        : (d.datos || []).filter(item => (item.dimensionValor||'').trim().toLowerCase() !== 'prueba piloto');
 
-      // Gráfico 1: categorías
       const catMap = {};
       datos.forEach(item => {
         const cat = this._mapProducto(item.producto);
@@ -368,7 +383,6 @@ class NavBarCustom extends HTMLElement {
         datasets: [{ label:'Por categoría', data:catEntries.map(([,v])=>v), backgroundColor:'#60a5fa' }]
       }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } }, 2.8);
 
-      // Gráfico 2: subproductos
       const sorted = [...datos].sort((a,b)=>b.totalVentas-a.totalVentas);
       const img2 = await this._renderChart('bar', {
         labels: sorted.map(d=>d.producto||'Sin producto'),
@@ -380,8 +394,12 @@ class NavBarCustom extends HTMLElement {
     }
 
     if (tabId === 'vendedores') {
-      const d = await this._fetchJSON('ranking-vendedores', mes, año);
-      const datos = (d.datos||[]).sort((a,b)=>b.ingresos-a.ingresos);
+      const d    = await this._fetchJSON('ranking-vendedores', mes, año);
+      const datos = (d.datos||[]).map(d => ({
+        ...d,
+        ingresos: incluirPP ? d.ingresos : (d.ingresos - (d.ingresospp || 0))
+      })).sort((a,b)=>b.ingresos-a.ingresos);
+
       const img = await this._renderChart('bar', {
         labels: datos.map(d=>d.vendedor),
         datasets: [{ label:'Ingresos', data:datos.map(d=>d.ingresos), backgroundColor:'#22c55e' }]
@@ -392,20 +410,23 @@ class NavBarCustom extends HTMLElement {
     }
 
     if (tabId === 'contratos') {
-      const d = await this._fetchJSON('contratos', mes, año);
+      const d        = await this._fetchJSON('contratos', mes, año);
       const contratos = d.datos || [];
-      const tipoMap = {};
-      const segMap = { B2B:{cantidad:0,totalVentas:0}, Marketplace:{cantidad:0,totalVentas:0} };
+      const tipoMap   = {};
+      const segMap    = { B2B:{cantidad:0,totalVentas:0}, Marketplace:{cantidad:0,totalVentas:0} };
+
       contratos.forEach(c => {
-        const tipo = this._mapContractType(c.numeroContrato);
-        const seg = (c.numeroContrato==='0001'||c.numeroContrato==='0002') ? 'B2B' : 'Marketplace';
+        const tipo  = this._mapContractType(c.numeroContrato);
+        const seg   = (c.numeroContrato==='0001'||c.numeroContrato==='0002') ? 'B2B' : 'Marketplace';
+        const monto = incluirPP ? c.totalVentas : c.totalVentasSinPP;
         if (!tipoMap[tipo]) tipoMap[tipo] = { totalVentas:0, cantidad:0 };
-        tipoMap[tipo].totalVentas += c.totalVentas;
+        tipoMap[tipo].totalVentas += monto;
         tipoMap[tipo].cantidad    += c.cantidad;
         segMap[seg].cantidad      += c.cantidad;
-        segMap[seg].totalVentas   += c.totalVentas;
+        segMap[seg].totalVentas   += monto;
       });
-      const orden = ['Nuevos','Recompra','Orientación Vocacional','Conócete','Otros'];
+
+      const orden  = ['Nuevos','Recompra','Orientación Vocacional','Conócete','Otros'];
       const labels = orden.filter(l => tipoMap[l]);
       const CTCOLORS = { Nuevos:'#0ea5a4', Recompra:'#0ea5a4', 'Orientación Vocacional':'#f97316', 'Conócete':'#f97316', Otros:'#f97316' };
 
@@ -415,8 +436,7 @@ class NavBarCustom extends HTMLElement {
       }, { scales:{ y:{beginAtZero:true} } }, 2.8);
 
       const segLabels = Object.keys(segMap);
-      const segCants = segLabels.map(k=>segMap[k].cantidad);
-      const totalCant = segCants.reduce((a,b)=>a+b,0);
+      const segCants  = segLabels.map(k=>segMap[k].cantidad);
       const img2 = await this._renderChart('doughnut', {
         labels: segLabels,
         datasets: [{ data:segCants, backgroundColor:['#0ea5a4','#f97316'] }]
@@ -431,7 +451,7 @@ class NavBarCustom extends HTMLElement {
     }
 
     if (tabId === 'empresas') {
-      const d = await this._fetchJSON('empresas', mes, año);
+      const d    = await this._fetchJSON('empresas', mes, año);
       const datos = d.datos || [];
       const empresaMap = {};
       datos.forEach(f => {
@@ -443,31 +463,31 @@ class NavBarCustom extends HTMLElement {
           empresaMap[region].dimensiones[k] = (empresaMap[region].dimensiones[k]||0)+Number(v);
         });
       });
-      const orden = ['Argentina','España','Chile','Otros'];
+      const orden  = ['Argentina','España','Chile','Otros'];
       const sorted = orden.filter(e=>empresaMap[e]).map(e=>[e,empresaMap[e]]);
 
       const chartImgs = [];
       for (const [region, data] of sorted) {
-        const dims = Object.entries(data.dimensiones||{}).sort((a,b)=>b[1]-a[1]);
-        const piloto = dims.reduce((a,[k,v])=>a+((k||'').trim().toLowerCase()==='prueba piloto'?Number(v):0),0);
-        const lbls = ['Total sin prueba piloto', ...dims.map(([k])=>k)];
-        const vals = [Number(data.ingresos||0)-piloto, ...dims.map(([,v])=>v)];
-        const cols = ['#0ea5a4', ...dims.map((_,i)=>DIM_COLORS[i%DIM_COLORS.length])];
-        const img = await this._renderChart('bar', {
+        let dims = Object.entries(data.dimensiones||{}).sort((a,b)=>b[1]-a[1]);
+        if (!incluirPP) dims = dims.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
+        const piloto = Object.entries(data.dimensiones||{}).reduce((a,[k,v])=>a+((k||'').trim().toLowerCase()==='prueba piloto'?Number(v):0),0);
+        const lbls   = ['Total sin prueba piloto', ...dims.map(([k])=>k)];
+        const vals   = [Number(data.ingresos||0)-piloto, ...dims.map(([,v])=>v)];
+        const cols   = ['#0ea5a4', ...dims.map((_,i)=>DIM_COLORS[i%DIM_COLORS.length])];
+        const img    = await this._renderChart('bar', {
           labels: lbls,
           datasets: [{ label:region, data:vals, backgroundColor:cols }]
         }, { plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{beginAtZero:true,ticks:{callback:v=>fmt(v)}} } }, 2.8);
         chartImgs.push({ img, region });
       }
 
-      const totalI = sorted.reduce((s,[,d])=>s+d.ingresos,0);
       const totalV = sorted.reduce((s,[,d])=>s+d.ventas,0);
       const rows = sorted.map(([emp,data]) => {
         const piloto = Object.entries(data.dimensiones||{}).reduce((a,[k,v])=>a+((k||'').trim().toLowerCase()==='prueba piloto'?Number(v):0),0);
         return `<tr><td><strong>${emp}</strong></td><td>${fmt(Number(data.ingresos||0)-piloto)}</td><td>${data.ventas}</td><td>${totalV>0?((data.ventas/totalV)*100).toFixed(1):0}%</td></tr>`;
       }).join('');
 
-      return { title:'Empresas', chartImgs: chartImgs.map(c=>c.img), chartLabels: chartImgs.map(c=>c.region), tableHtml:rows, tableHeaders:['Empresa','Ingresos sin PP','Facturas','% Ventas'] };
+      return { title:'Empresas', chartImgs:chartImgs.map(c=>c.img), chartLabels:chartImgs.map(c=>c.region), tableHtml:rows, tableHeaders:['Empresa','Ingresos sin PP','Facturas','% Ventas'] };
     }
   }
 
@@ -475,21 +495,18 @@ class NavBarCustom extends HTMLElement {
     const checkedTabs = [...this.querySelectorAll('[data-tab]:checked')].map(cb => cb.dataset.tab);
     if (!checkedTabs.length) { alert('Seleccioná al menos una pestaña.'); return; }
 
-    const periodoVal = this.querySelector('#pdf-periodo-select').value;
-    let mes = null, año = null;
-    if (periodoVal.startsWith('mes:')) { mes = periodoVal.substring(4); año = mes.split('-')[1]; }
-    else if (periodoVal.startsWith('año:')) { año = periodoVal.substring(4); }
-
+    const añoVal = this.querySelector('#pdf-año-select').value;
+    const mesVal = this.querySelector('#pdf-mes-select').value;
+    const mes    = mesVal || null;   // '' = año completo
+    const año    = añoVal || null;
     const incluirPP = this.querySelector('#pdf-toggle-pp').checked;
 
-    // Mostrar loading
-    const loading = this.querySelector('#pdf-loading');
+    const loading    = this.querySelector('#pdf-loading');
     const loadingMsg = this.querySelector('#pdf-loading-msg');
     loading.style.display = 'flex';
     this.querySelector('#pdf-generate-btn').disabled = true;
 
     try {
-      // Cargar jsPDF si no está
       if (!window.jspdf) {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script');
@@ -500,20 +517,18 @@ class NavBarCustom extends HTMLElement {
       }
 
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-      const pageW = 210;
-      const pageH = 297;
-      const margin = 14;
+      const doc      = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+      const pageW    = 210;
+      const pageH    = 297;
+      const margin   = 14;
       const contentW = pageW - margin * 2;
       let y = margin;
 
-      // Período label
-      const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const NOMBRES      = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
       const periodoLabel = mes
-        ? `${mesesNombres[parseInt(mes.split('-')[0])-1]} ${mes.split('-')[1]}`
+        ? `${NOMBRES[parseInt(mes.split('-')[0])-1]} ${mes.split('-')[1]}`
         : `Año ${año}`;
 
-      // Header general
       doc.setFontSize(18);
       doc.setTextColor(15,23,42);
       doc.setFont('helvetica','bold');
@@ -525,9 +540,7 @@ class NavBarCustom extends HTMLElement {
       doc.text(`Período: ${periodoLabel}`, margin, y);
       y += 10;
 
-      const checkY = () => {
-        if (y > pageH - 20) { doc.addPage(); y = margin; }
-      };
+      const checkY = () => { if (y > pageH - 20) { doc.addPage(); y = margin; } };
 
       for (const tabId of checkedTabs) {
         loadingMsg.textContent = `Generando sección: ${tabId}...`;
@@ -550,7 +563,7 @@ class NavBarCustom extends HTMLElement {
         if (section.chartImgs && section.chartImgs.length) {
           for (let ci = 0; ci < section.chartImgs.length; ci++) {
             const { imgData, ratio } = section.chartImgs[ci];
-            const chartH = Math.round(contentW / ratio); // altura exacta según ratio
+            const chartH = Math.round(contentW / ratio);
             if (y + chartH > pageH - margin) { doc.addPage(); y = margin; }
 
             if (section.chartLabels && section.chartLabels[ci]) {
@@ -568,53 +581,40 @@ class NavBarCustom extends HTMLElement {
         // Tabla
         if (section.tableHtml && section.tableHeaders) {
           checkY();
-          // Cabecera tabla
           const colW = contentW / section.tableHeaders.length;
           doc.setFillColor(241,245,249);
           doc.rect(margin, y, contentW, 7, 'F');
           doc.setFontSize(9); doc.setFont('helvetica','bold');
           doc.setTextColor(15,23,42);
-          section.tableHeaders.forEach((h, i) => {
-            doc.text(h, margin + colW*i + 2, y + 5);
-          });
+          section.tableHeaders.forEach((h, i) => { doc.text(h, margin + colW*i + 2, y + 5); });
           y += 7;
 
-          // Filas — parsear tableHtml
-          const tmp = document.createElement('tbody');
+          const tmp  = document.createElement('tbody');
           tmp.innerHTML = section.tableHtml;
           const rows = tmp.querySelectorAll('tr');
 
           rows.forEach((row, ri) => {
             if (y + 7 > pageH - margin) { doc.addPage(); y = margin; }
-            const cells = row.querySelectorAll('td');
+            const cells      = row.querySelectorAll('td');
             const isTotalRow = row.style.borderTop || row.querySelector('td strong')?.textContent === 'Total';
 
-            if (ri % 2 === 0) {
-              doc.setFillColor(248,250,252);
-              doc.rect(margin, y, contentW, 7, 'F');
-            }
-            if (isTotalRow) {
-              doc.setFillColor(226,232,240);
-              doc.rect(margin, y, contentW, 7, 'F');
-            }
+            if (ri % 2 === 0) { doc.setFillColor(248,250,252); doc.rect(margin, y, contentW, 7, 'F'); }
+            if (isTotalRow)   { doc.setFillColor(226,232,240); doc.rect(margin, y, contentW, 7, 'F'); }
 
             doc.setFontSize(8.5);
             doc.setFont('helvetica', isTotalRow ? 'bold' : 'normal');
             doc.setTextColor(71,85,105);
-
             cells.forEach((cell, i) => {
-              const text = cell.textContent.trim();
-              doc.text(text, margin + colW*i + 2, y + 5, { maxWidth: colW - 4 });
+              doc.text(cell.textContent.trim(), margin + colW*i + 2, y + 5, { maxWidth: colW - 4 });
             });
             y += 7;
           });
         }
 
-        y += 10; // espacio entre secciones
+        y += 10;
       }
 
-      const filename = `dashboard_${periodoLabel.replace(/ /g,'_')}.pdf`;
-      doc.save(filename);
+      doc.save(`dashboard_${periodoLabel.replace(/ /g,'_')}.pdf`);
 
     } catch(e) {
       console.error('Error generando PDF:', e);
