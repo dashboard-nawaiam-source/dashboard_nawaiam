@@ -82,7 +82,7 @@ class NavBarCustom extends HTMLElement {
 
           <!-- Toggle PP — solo visible si General está chequeado -->
           <div id="pdf-pp-row" style="
-            display:none;
+            display:flex;
             align-items:center;
             gap:10px;
             margin-bottom:18px;
@@ -103,7 +103,7 @@ class NavBarCustom extends HTMLElement {
                 transition:.2s;pointer-events:none;
               "></span>
             </label>
-            <label for="pdf-toggle-pp" style="font-size:13px;color:#475569;cursor:pointer">Incluir Prueba Piloto en General</label>
+            <label for="pdf-toggle-pp" style="font-size:13px;color:#475569;cursor:pointer">Incluir Prueba Piloto</label>
           </div>
 
           <!-- Botones -->
@@ -175,14 +175,6 @@ class NavBarCustom extends HTMLElement {
       `;
       tabsList.appendChild(row);
     });
-
-    // Toggle PP visibility
-    const togglePPRow = () => {
-      const generalCb = this.querySelector('[data-tab="general"]');
-      const ppRow     = this.querySelector('#pdf-pp-row');
-      ppRow.style.display = generalCb.checked ? 'flex' : 'none';
-    };
-    this.querySelector('[data-tab="general"]').addEventListener('change', togglePPRow);
 
     // Toggle PP slider visual
     const ppInput  = this.querySelector('#pdf-toggle-pp');
