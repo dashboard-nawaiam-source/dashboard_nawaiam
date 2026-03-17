@@ -9,223 +9,102 @@
     .card { max-width:900px; margin:auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(2,6,23,0.06) }
     h1 { margin-bottom:12px; font-size:20px }
     .subtitle { color:#64748b; margin-bottom:24px; font-size:13px }
-    .mes-selector { margin-bottom:24px; display:flex; gap:12px; align-items:center }
-    .mes-selector label { font-weight:600; font-size:14px }
-    .mes-selector select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:4px; font-size:14px; cursor:pointer; min-width:200px }
     canvas { max-width:100%; height:400px }
     .demo-data { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
-    .demo-data h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
     .demo-data table { width: 100%; border-collapse: collapse; }
     .demo-data th { background: #f1f5f9; padding: 8px; text-align: left; border: 1px solid #e2e8f0; font-weight: 600; font-size: 12px; }
     .demo-data td { padding: 8px; border: 1px solid #e2e8f0; font-size: 14px; }
-    .loading { text-align:center; padding:20px; color:#64748b }
     .dim-row td { background: #f8fafc; color: #475569; }
-
-    /* Toggle Prueba Piloto */
-    .pp-toggle-wrapper { display:flex; align-items:center; gap:10px; margin-bottom:20px }
-    .pp-toggle-wrapper label { font-size:13px; font-weight:600; color:#475569; cursor:pointer }
-    .toggle-switch { position:relative; display:inline-block; width:36px; height:20px }
-    .toggle-switch input { opacity:0; width:0; height:0 }
-    .toggle-slider { position:absolute; cursor:pointer; inset:0; background:#e2e8f0; border-radius:20px; transition:.2s }
-    .toggle-slider:before { position:absolute; content:""; height:14px; width:14px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s }
-    .toggle-switch input:checked + .toggle-slider { background:#0ea5a4 }
-    .toggle-switch input:checked + .toggle-slider:before { transform:translateX(16px) }
   </style>
   <script src="../components/auth.js"></script>
+  <script src="../components/period-selector.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
 </head>
 <body>
   <nav-bar-custom></nav-bar-custom>
   <div class="card">
     <h1>Dashboard General</h1>
-    
-    <div class="mes-selector">
-      <label for="mesSelect">Período:</label>
-      <select id="mesSelect">
-        <option value="">Cargando...</option>
-      </select>
-    </div>
 
-    <div class="pp-toggle-wrapper">
-      <label class="toggle-switch">
-        <input type="checkbox" id="togglePP" />
-        <span class="toggle-slider"></span>
-      </label>
-      <label for="togglePP" id="togglePPLabel">Incluir Prueba Piloto</label>
-    </div>
+    <div id="periodoContainer"></div>
 
-    <div class="subtitle" id="mes">Cargando...</div>
     <div class="subtitle" id="totalBruto">Cargando...</div>
-    
+
     <canvas id="chart"></canvas>
 
     <div class="demo-data">
       <table>
         <thead>
-          <tr>
-            <th>Métrica</th>
-            <th>Valor</th>
-          </tr>
+          <tr><th>Métrica</th><th>Valor</th></tr>
         </thead>
-        <tbody id="demoTable">
-        </tbody>
+        <tbody id="demoTable"></tbody>
       </table>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
-    // Verificar autenticación
-    if (!Auth.isAuthenticated()) {
-      window.location.href = '/login';
-    }
+    if (!Auth.isAuthenticated()) { window.location.href = '/login'; }
 
-    // Estado del toggle — excluido por defecto
-    let _incluirPP = false;
-    let _lastData = null;
-
-    async function cargarMesesYAños() {
-      try {
-        const res = await Auth.fetch('/facturas/meses');
-        const json = await res.json();
-        const mesesActual = json.data.mesesActual || [];
-        const años = json.data.años || [];
-        
-        const mesSelect = document.getElementById('mesSelect');
-        mesSelect.innerHTML = '';
-        
-        mesesActual.forEach(mes => {
-          const option = document.createElement('option');
-          option.value = `mes:${mes}`;
-          const [mesNum, año] = mes.split('-');
-          const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-          option.textContent = `${mesesNombres[parseInt(mesNum) - 1]} ${año}`;
-          mesSelect.appendChild(option);
-        });
-
-        if (mesesActual.length > 0 && años.length > 0) {
-          const separator = document.createElement('option');
-          separator.disabled = true;
-          separator.textContent = 'Acumulados Anuales:';
-          mesSelect.appendChild(separator);
-        }
-
-        años.forEach(año => {
-          const option = document.createElement('option');
-          option.value = `año:${año}`;
-          option.textContent = `${año}`;
-          mesSelect.appendChild(option);
-        });
-        
-        if (mesesActual.length > 0) {
-          mesSelect.value = `mes:${mesesActual[0]}`;
-        }
-      } catch (e) {
-        if (e.message === 'AUTH_REQUIRED') {
-          window.location.href = '/login';
-          return;
-        }
-        console.error('Error cargando meses y años:', e);
-      }
-    }
+    let _lastData  = null;
+    let _lastMes   = null;
+    let _lastAño   = null;
+    let _includePP = false;
 
     async function fetchDashboard(mes, año) {
       try {
         let url = '/facturas/dashboardGeneral';
         const params = [];
         if (mes) params.push(`mes=${mes}`);
-        if (año) params.push(`año=${año}`);
-        if (params.length > 0) url += '?' + params.join('&');
-
+        else if (año) params.push(`año=${año}`);
+        if (params.length) url += '?' + params.join('&');
         const res = await Auth.fetch(url);
         if (!res.ok) throw new Error('Error fetching');
-        const json = await res.json();
-        return json.data;
+        return (await res.json()).data;
       } catch(e) {
-        if (e.message === 'AUTH_REQUIRED') {
-          window.location.href = '/login';
-          return null;
-        }
-        console.error(e);
-        return null;
+        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return null; }
+        console.error(e); return null;
       }
     }
 
     function formatMoney(v) {
-      return new Intl.NumberFormat('es-AR', {
-        style: 'currency',
-        currency: 'ARS'
-      }).format(v);
+      return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(v);
     }
 
     function render(d) {
-      document.getElementById('mes').textContent = '';
-
+      // Dimensiones: filtrar PP si toggle desactivado
       let dimEntries = Object.entries(d.dimensiones || {});
+      if (!_includePP) dimEntries = dimEntries.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
 
-      // Si el toggle está apagado (excluir PP), filtrar prueba piloto de las dimensiones
-      if (!_incluirPP) {
-        dimEntries = dimEntries.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
-      }
+      // Calcular monto PP para restarlo del total cuando está excluido
+      const ppVal      = Object.entries(d.dimensiones || {}).reduce((acc, [k, v]) =>
+        acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
+      const totalMostrado = _includePP ? Number(d.totalVentas || 0) : Number(d.totalVentas || 0) - ppVal;
 
-      const totalMostrado = dimEntries.reduce((acc, [, v]) => acc + Number(v), 0);
-      // Si hay dimensiones, el total mostrado es la suma de las dimensiones filtradas.
-      // Si no hay dimensiones, usar totalVentas tal cual.
-      const totalBase = dimEntries.length > 0 ? totalMostrado : Number(d.totalVentas || 0);
+      document.getElementById('totalBruto').textContent = `Total: ${formatMoney(totalMostrado)}`;
 
-      // "Total sin prueba piloto" cuando PP está excluido, o "Total" cuando está incluido
-      const totalLabel = _incluirPP ? 'Total' : 'Total sin prueba piloto';
+      const DIM_COLORS = ['#22c55e','#60a5fa','#f97316','#a78bfa','#f43f5e','#facc15','#34d399','#fb923c'];
+      const labels = ['Total', ...dimEntries.map(([dim]) => dim), 'Promedio por factura', 'Cantidad facturas'];
+      const values = [totalMostrado, ...dimEntries.map(([, v]) => v), d.promedioPorFactura, d.cantidadFacturas];
+      const colors = ['#0ea5a4', ...dimEntries.map((_, i) => DIM_COLORS[i % DIM_COLORS.length]), '#f97316', '#60a5fa'];
 
-      document.getElementById('totalBruto').textContent = `Total: ${formatMoney(_incluirPP ? d.totalVentas : totalBase)}`;
-
-      const ctx = document.getElementById('chart').getContext('2d');
-
-      const pilotoVal = _incluirPP
-        ? 0
-        : Object.entries(d.dimensiones || {}).reduce((acc, [k, v]) => acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
-
-      const totalSinPP = Number(d.totalVentas || 0) - pilotoVal;
-
-      const labels = [totalLabel, ...dimEntries.map(([dim]) => dim), 'Promedio por factura', 'Cantidad facturas'];
-      const values = [totalSinPP, ...dimEntries.map(([, v]) => v), d.promedioPorFactura, d.cantidadFacturas];
-      const DIM_COLORS = ['#22c55e', '#60a5fa', '#f97316', '#a78bfa', '#f43f5e', '#facc15', '#34d399', '#fb923c'];
-      const colors = [
-        '#0ea5a4',
-        ...dimEntries.map((_, i) => DIM_COLORS[i % DIM_COLORS.length]),
-        '#f97316',
-        '#60a5fa'
-      ];
-
-      const max = Math.max(...values.map(v => Math.abs(v) || 0));
+      const max    = Math.max(...values.map(v => Math.abs(v) || 0));
       const scaled = values.map(v => max ? (v / max) * 100 : 0);
 
-      if(window._finChart) window._finChart.destroy();
-
+      const ctx = document.getElementById('chart').getContext('2d');
+      if (window._finChart) window._finChart.destroy();
       window._finChart = new Chart(ctx, {
         type: 'bar',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Comparación (normalizada)',
-            data: scaled,
-            backgroundColor: colors
-          }]
-        },
+        data: { labels, datasets: [{ label: 'Comparación (normalizada)', data: scaled, backgroundColor: colors }] },
         options: {
           responsive: true,
-          interaction: {
-            mode: 'nearest',
-            intersect: false
-          },
-          scales: {
-            y: { beginAtZero: true, ticks: { callback: v => v + '%' } }
-          },
+          interaction: { mode: 'nearest', intersect: false },
+          scales: { y: { beginAtZero: true, ticks: { callback: v => v + '%' } } },
           plugins: {
             legend: { display: false },
             tooltip: {
               callbacks: {
                 label: ctx => {
-                  const idx = ctx.dataIndex;
+                  const idx  = ctx.dataIndex;
                   const real = values[idx];
                   if (idx === labels.length - 1) return `Cantidad: ${Math.round(real)} facturas`;
                   return formatMoney(real);
@@ -237,62 +116,33 @@
       });
 
       const filaDimensiones = dimEntries
-        .map(([dim, valor]) => `
-          <tr class="dim-row">
-            <td>&nbsp;&nbsp;↳ ${dim}</td>
-            <td>${formatMoney(valor)}</td>
-          </tr>
-        `).join('');
+        .map(([dim, valor]) => `<tr class="dim-row"><td>&nbsp;&nbsp;↳ ${dim}</td><td>${formatMoney(valor)}</td></tr>`)
+        .join('');
 
-      const tbody = document.getElementById('demoTable');
-      tbody.innerHTML = `
-        <tr>
-          <td><strong>${totalLabel}</strong></td>
-          <td>${formatMoney(totalSinPP)}</td>
-        </tr>
+      document.getElementById('demoTable').innerHTML = `
+        <tr><td><strong>Total</strong></td><td>${formatMoney(totalMostrado)}</td></tr>
         ${filaDimensiones}
-        <tr>
-          <td><strong>Promedio por Factura</strong></td>
-          <td>${formatMoney(d.promedioPorFactura)}</td>
-        </tr>
-        <tr>
-          <td><strong>Cantidad de Facturas</strong></td>
-          <td>${d.cantidadFacturas}</td>
-        </tr>
+        <tr><td><strong>Promedio por Factura</strong></td><td>${formatMoney(d.promedioPorFactura)}</td></tr>
+        <tr><td><strong>Cantidad de Facturas</strong></td><td>${d.cantidadFacturas}</td></tr>
       `;
     }
 
-    // Toggle event
-    document.getElementById('togglePP').addEventListener('change', function() {
-      _incluirPP = this.checked;
-      document.getElementById('togglePPLabel').textContent = _incluirPP ? 'Incluir Prueba Piloto' : 'Incluir Prueba Piloto';
-      if (_lastData) render(_lastData);
-    });
-
-    (async () => {
-      await cargarMesesYAños();
-      const mesSelect = document.getElementById('mesSelect');
-      
-      const firstValue = mesSelect.value;
-      if (firstValue.startsWith('mes:')) {
-        const data = await fetchDashboard(firstValue.substring(4), null);
-        if (data) { _lastData = data; render(data); }
-      } else if (firstValue.startsWith('año:')) {
-        const data = await fetchDashboard(null, firstValue.substring(4));
+    const ps = new PeriodSelector({
+      container:    document.getElementById('periodoContainer'),
+      showPPToggle: true,
+      onChange: async ({ mes, año, includePP }) => {
+        _includePP = includePP;
+        // Si solo cambió el toggle, re-renderizar sin nuevo fetch
+        if (mes === _lastMes && año === _lastAño && _lastData) {
+          render(_lastData);
+          return;
+        }
+        _lastMes = mes; _lastAño = año;
+        const data = await fetchDashboard(mes, año);
         if (data) { _lastData = data; render(data); }
       }
-
-      mesSelect.addEventListener('change', async (e) => {
-        const value = e.target.value;
-        if (value.startsWith('mes:')) {
-          const data = await fetchDashboard(value.substring(4), null);
-          if (data) { _lastData = data; render(data); }
-        } else if (value.startsWith('año:')) {
-          const data = await fetchDashboard(null, value.substring(4));
-          if (data) { _lastData = data; render(data); }
-        }
-      });
-    })();
+    });
+    ps.init();
   </script>
 </body>
 </html>
