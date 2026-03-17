@@ -35,35 +35,47 @@ export class FacturaService {
   }
 
   /**
-   * Obtiene todos los meses disponibles con facturas del año actual
-   * y los años anteriores completos (últimos 5 años)
+   * Obtiene todos los meses disponibles agrupados por año,
+   * más la lista de años disponibles ordenados de más reciente a más antiguo.
+   *
+   * Respuesta:
+   *   mesesPorAño: { "2026": ["01-2026","02-2026",...], "2025": [...], ... }
+   *   años: ["2026","2025","2024",...]
+   *
+   * @deprecated mesesActual se mantiene por compatibilidad con el PDF nav-bar
    */
   async obtenerMesesDisponibles(): Promise<{
-    mesesActual: string[];
+    mesesActual: string[];   // meses del año actual (compat)
     años: string[];
+    mesesPorAño: Record<string, string[]>;
   }> {
     try {
       const meses = await this.repository.obtenerPorMeses();
-      const años = await this.repository.obtenerPorAños();
-      
+      const años  = await this.repository.obtenerPorAños();
+
       const añoActual = this.obtenerAñoActual();
 
-      // Obtener meses del año actual y ordenarlos (más recientes primero)
+      // Meses del año actual, ordenados de más reciente a más antiguo (compat)
       const mesesActualArray = Object.keys(meses)
         .filter(m => m.endsWith(`-${añoActual}`))
-        .sort((a, b) => {
-          const [mesA] = a.split('-');
-          const [mesB] = b.split('-');
-          return parseInt(mesB) - parseInt(mesA); // Mayor a menor
-        });
+        .sort((a, b) => parseInt(b) - parseInt(a));
 
-      // Obtener años disponibles y ordenarlos (más recientes primero)
+      // Años disponibles, más recientes primero
       const añosDisponibles = Object.keys(años)
         .sort((a, b) => parseInt(b) - parseInt(a));
+
+      // Todos los meses agrupados por año, cada grupo ordenado de más reciente a más antiguo
+      const mesesPorAño: Record<string, string[]> = {};
+      for (const año of añosDisponibles) {
+        mesesPorAño[año] = Object.keys(meses)
+          .filter(m => m.endsWith(`-${año}`))
+          .sort((a, b) => parseInt(b) - parseInt(a));
+      }
 
       return {
         mesesActual: mesesActualArray,
         años: añosDisponibles,
+        mesesPorAño,
       };
     } catch (error) {
       console.error('Error en obtenerMesesDisponibles:', error);
@@ -90,12 +102,10 @@ export class FacturaService {
       let tipo: 'mes' | 'año' = 'mes';
 
       if (añoEspecifico) {
-        // Si se especifica año, obtener todos los datos del año
         facturas = await this.repository.obtenerPorAño(añoEspecifico);
-        mes = `01-${añoEspecifico}`; // Solo para extracción de año
+        mes = `01-${añoEspecifico}`;
         tipo = 'año';
       } else {
-        // Si se especifica mes o usar actual
         mes = mesEspecifico || this.obtenerMesActual();
         facturas = await this.repository.obtenerPorMes(mes);
       }
@@ -108,7 +118,7 @@ export class FacturaService {
 
       const [mesNum, año] = mes.split('-');
       const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-      const mesFormato = tipo === 'año' 
+      const mesFormato = tipo === 'año'
         ? año
         : `${meses[parseInt(mesNum) - 1]} ${año}`;
 
@@ -118,7 +128,7 @@ export class FacturaService {
         tipo,
         totalVentas: Math.round(totalVentas * 100) / 100,
         cantidadFacturas,
-        dimensiones,                                          // 👈
+        dimensiones,
         promedioPorFactura: Math.round(promedioPorFactura * 100) / 100,
         montoPendiente: Math.round(montoPendiente * 100) / 100,
       };
@@ -140,6 +150,7 @@ export class FacturaService {
       totalVentas: number;
       cantidadFacturas: number;
       montoPendiente: number;
+      dimensionValor: string;
     }[]
   }> {
     try {
@@ -158,7 +169,7 @@ export class FacturaService {
 
       const map = new Map<
         string,
-        { totalVentas: number; cantidadFacturas: number; montoPendiente: number }
+        { totalVentas: number; cantidadFacturas: number; montoPendiente: number; dimensionValor: string }
       >();
 
       for (const f of facturas) {
@@ -169,6 +180,7 @@ export class FacturaService {
             totalVentas: 0,
             cantidadFacturas: 0,
             montoPendiente: 0,
+            dimensionValor: f.dimensionValor || '',
           });
         }
 
@@ -193,6 +205,7 @@ export class FacturaService {
           totalVentas: Math.round(data.totalVentas * 100) / 100,
           cantidadFacturas: data.cantidadFacturas,
           montoPendiente: Math.round(data.montoPendiente * 100) / 100,
+          dimensionValor: data.dimensionValor,
         }))
       };
     } catch (error) {
@@ -212,6 +225,7 @@ export class FacturaService {
       vendedor: string;
       cantidadVentas: number;
       ingresos: number;
+      dimensionValor: string;
     }[]
   }> {
     try {
@@ -228,21 +242,23 @@ export class FacturaService {
         facturas = await this.repository.obtenerPorMes(mes);
       }
 
+      // Acumular por vendedor conservando la lista de dimensiones para filtrar en frontend
       const map = new Map<
         string,
-        { cantidadVentas: number; ingresos: number }
+        { cantidadVentas: number; ingresos: number; items: { total: number; dimensionValor: string }[] }
       >();
 
       for (const f of facturas) {
         const key = f.vendedor || 'Sin vendedor';
 
         if (!map.has(key)) {
-          map.set(key, { cantidadVentas: 0, ingresos: 0 });
+          map.set(key, { cantidadVentas: 0, ingresos: 0, items: [] });
         }
 
         const acc = map.get(key)!;
         acc.cantidadVentas += 1;
         acc.ingresos += f.total;
+        acc.items.push({ total: f.total, dimensionValor: f.dimensionValor || '' });
       }
 
       const [mesNum, año] = mes.split('-');
@@ -259,6 +275,13 @@ export class FacturaService {
           vendedor,
           cantidadVentas: data.cantidadVentas,
           ingresos: Math.round(data.ingresos * 100) / 100,
+          // Monto correspondiente solo a Prueba Piloto, para que el frontend pueda restar
+          ingresospp: Math.round(
+            data.items
+              .filter(i => (i.dimensionValor || '').trim().toLowerCase() === 'prueba piloto')
+              .reduce((s, i) => s + i.total, 0) * 100
+          ) / 100,
+          dimensionValor: '',  // campo de compat, no usado
         }))
       };
     } catch (error) {
@@ -278,6 +301,7 @@ export class FacturaService {
       numeroContrato: string;
       cantidad: number;
       totalVentas: number;
+      totalVentasSinPP: number;
     }[]
   }> {
     try {
@@ -294,17 +318,21 @@ export class FacturaService {
         facturas = await this.repository.obtenerPorMes(mes);
       }
 
-      const contratos: { [key: string]: { cantidad: number; totalVentas: number } } = {};
+      const contratos: {
+        [key: string]: { cantidad: number; totalVentas: number; totalVentasSinPP: number }
+      } = {};
 
       for (const f of facturas) {
         const numeroContrato = f.numeroContrato?.trim() || 'Otros';
-        
+        const esPP = (f.dimensionValor || '').trim().toLowerCase() === 'prueba piloto';
+
         if (!contratos[numeroContrato]) {
-          contratos[numeroContrato] = { cantidad: 0, totalVentas: 0 };
+          contratos[numeroContrato] = { cantidad: 0, totalVentas: 0, totalVentasSinPP: 0 };
         }
 
         contratos[numeroContrato].cantidad += 1;
         contratos[numeroContrato].totalVentas += f.total;
+        if (!esPP) contratos[numeroContrato].totalVentasSinPP += f.total;
       }
 
       const [mesNum, año] = mes.split('-');
@@ -321,6 +349,7 @@ export class FacturaService {
           numeroContrato,
           cantidad: data.cantidad,
           totalVentas: Math.round(data.totalVentas * 100) / 100,
+          totalVentasSinPP: Math.round(data.totalVentasSinPP * 100) / 100,
         }))
       };
     } catch (error) {
@@ -367,7 +396,7 @@ export class FacturaService {
 
       for (const f of facturas) {
         const empresa = f.empresa?.trim() || 'Otros';
-        
+
         if (!empresas[empresa]) {
           empresas[empresa] = { cantidadFacturas: 0, totalVentas: 0, dimensiones: {} };
         }
@@ -409,13 +438,8 @@ export class FacturaService {
     }
   }
 
-    /**
+  /**
    * Obtiene clientes únicos por tipo de contrato para un mes específico o año completo.
-   * Deduplica por campo `cliente` dentro de cada grupo.
-   *
-   * Contratos 0001 → nuevos (B2B)
-   * Contratos 0002 → recompra (B2B)
-   * El resto       → marketplace
    */
   async obtenerClientesUnicos(mesEspecifico?: string, añoEspecifico?: string): Promise<{
     mes: string;
@@ -423,7 +447,7 @@ export class FacturaService {
     tipo: 'mes' | 'año';
     nuevos: number;
     recompra: number;
-    b2bTotal: number;       // únicos entre nuevos + recompra (sin doble conteo)
+    b2bTotal: number;
     marketplace: number;
     total: number;
   }> {
