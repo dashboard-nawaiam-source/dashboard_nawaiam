@@ -8,9 +8,6 @@
     body { font-family: system-ui, Arial; background:#f7fafc; padding:24px }
     .card { max-width:900px; margin:auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(2,6,23,0.06) }
     h1 { margin-bottom:12px; font-size:20px }
-    .mes-selector { margin-bottom:24px; display:flex; gap:12px; align-items:center }
-    .mes-selector label { font-weight:600; font-size:14px }
-    .mes-selector select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:4px; font-size:14px; cursor:pointer; min-width:200px }
     .section { margin-bottom:32px }
     .section-title { font-weight:600; margin-bottom:12px; color:#0f172a; font-size:14px }
     .chart-container { position: relative; height: 350px; width: 100%; margin-bottom:32px }
@@ -21,19 +18,16 @@
     .data-table td { padding: 8px; border: 1px solid #e2e8f0; font-size: 14px; }
   </style>
   <script src="../components/auth.js"></script>
+  <script src="../components/period-selector.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
 </head>
 <body>
   <nav-bar-custom></nav-bar-custom>
   <div class="card">
-    <h1>Contratos</h1>    
-    <div class="mes-selector">
-      <label for="mesSelect">Período:</label>
-      <select id="mesSelect">
-        <option value="">Cargando...</option>
-      </select>
-    </div>
-    
+    <h1>Contratos</h1>
+
+    <div id="periodoContainer"></div>
+
     <div class="section">
       <div class="section-title">Tipo de Contrato</div>
       <div class="chart-container">
@@ -47,11 +41,10 @@
             <th>Cantidad de Operaciones</th>
           </tr>
         </thead>
-        <tbody id="tablaTipoContrato">
-        </tbody>
+        <tbody id="tablaTipoContrato"></tbody>
       </table>
     </div>
-    
+
     <div class="section">
       <div class="section-title">Segmentación de Ventas</div>
       <div class="chart-circular-wrapper">
@@ -64,85 +57,29 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
-    // Verificar autenticación
-    if (!Auth.isAuthenticated()) {
-      window.location.href = '/login';
-    }
-
-    async function cargarMesesYAños() {
-      try {
-        const res = await Auth.fetch('/facturas/meses');
-        const json = await res.json();
-        const mesesActual = json.data.mesesActual || [];
-        const años = json.data.años || [];
-        
-        const mesSelect = document.getElementById('mesSelect');
-        mesSelect.innerHTML = '';
-        
-        mesesActual.forEach(mes => {
-          const option = document.createElement('option');
-          option.value = `mes:${mes}`;
-          const [mesNum, año] = mes.split('-');
-          const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-          option.textContent = `${mesesNombres[parseInt(mesNum) - 1]} ${año}`;
-          mesSelect.appendChild(option);
-        });
-
-        if (mesesActual.length > 0 && años.length > 0) {
-          const separator = document.createElement('option');
-          separator.disabled = true;
-          separator.textContent = 'Acumulados Anuales:';
-          mesSelect.appendChild(separator);
-        }
-
-        años.forEach(año => {
-          const option = document.createElement('option');
-          option.value = `año:${año}`;
-          option.textContent = `${año}`;
-          mesSelect.appendChild(option);
-        });
-        
-        if (mesesActual.length > 0) {
-          mesSelect.value = `mes:${mesesActual[0]}`;
-        }
-      } catch (e) {
-        if (e.message === 'AUTH_REQUIRED') {
-          window.location.href = '/login';
-          return;
-        }
-        console.error('Error cargando meses y años:', e);
-      }
-    }
+    if (!Auth.isAuthenticated()) { window.location.href = '/login'; }
 
     async function fetchData(mes, año) {
       try {
         let url = '/facturas/contratos';
         const params = [];
         if (mes) params.push(`mes=${mes}`);
-        if (año) params.push(`año=${año}`);
-        if (params.length > 0) url += '?' + params.join('&');
-
+        else if (año) params.push(`año=${año}`);
+        if (params.length) url += '?' + params.join('&');
         const res = await Auth.fetch(url);
         const json = await res.json();
         return json.data;
       } catch(e) {
-        if (e.message === 'AUTH_REQUIRED') {
-          window.location.href = '/login';
-          return null;
-        }
-        console.error(e);
-        return null;
+        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return null; }
+        console.error(e); return null;
       }
     }
 
-    const COLORS = {
-      B2B: '#0ea5a4',
-      MARKETPLACE: '#f97316'
-    };
+    const COLORS = { B2B: '#0ea5a4', MARKETPLACE: '#f97316' };
 
-    function mapContractType(numeroContrato) {
-      const cleaned = numeroContrato.trim().toLowerCase();
-      switch(cleaned) {
+    function mapContractType(n) {
+      const c = n.trim().toLowerCase();
+      switch(c) {
         case '0001': return 'Nuevos';
         case '0002': return 'Recompra';
         case 'orientación vocacional': return 'Orientación Vocacional';
@@ -151,25 +88,19 @@
       }
     }
 
-    function getSegmentationType(numeroContrato) {
-      return (numeroContrato === '0001' || numeroContrato === '0002') ? 'B2B' : 'Marketplace';
+    function getSegmentationType(n) {
+      return (n === '0001' || n === '0002') ? 'B2B' : 'Marketplace';
     }
 
-    function getColorByContractType(tipoContrato) {
-      if (tipoContrato === 'Nuevos' || tipoContrato === 'Recompra') {
-        return COLORS.B2B;
-      }
-      return COLORS.MARKETPLACE;
+    function getColorByContractType(tipo) {
+      return (tipo === 'Nuevos' || tipo === 'Recompra') ? COLORS.B2B : COLORS.MARKETPLACE;
     }
 
     function formatMoney(v) {
-      return new Intl.NumberFormat('es-AR', {
-        style: 'currency',
-        currency: 'ARS'
-      }).format(v);
+      return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(v);
     }
 
-    async function render(mes, año) {
+    async function render(mes, año, includePP) {
       const resultado = await fetchData(mes, año);
       if (!resultado) return;
 
@@ -179,35 +110,32 @@
       const segmentacionMap = { 'B2B': { cantidad: 0, totalVentas: 0 }, 'Marketplace': { cantidad: 0, totalVentas: 0 } };
 
       contratos.forEach(c => {
-        const tipoContrato = mapContractType(c.numeroContrato);
-        const segmentacion = getSegmentationType(c.numeroContrato);
-        
-        if (!tipoContratoMap[tipoContrato]) {
-          tipoContratoMap[tipoContrato] = { totalVentas: 0, cantidad: 0 };
-        }
+        const tipo = mapContractType(c.numeroContrato);
+        const seg  = getSegmentationType(c.numeroContrato);
+        // Usar totalVentasSinPP cuando PP está excluido
+        const monto = includePP ? c.totalVentas : c.totalVentasSinPP;
 
-        tipoContratoMap[tipoContrato].totalVentas += c.totalVentas;
-        tipoContratoMap[tipoContrato].cantidad    += c.cantidad;
-        segmentacionMap[segmentacion].cantidad    += c.cantidad;
-        segmentacionMap[segmentacion].totalVentas += c.totalVentas;
+        if (!tipoContratoMap[tipo]) tipoContratoMap[tipo] = { totalVentas: 0, cantidad: 0 };
+        tipoContratoMap[tipo].totalVentas += monto;
+        tipoContratoMap[tipo].cantidad    += c.cantidad;
+        segmentacionMap[seg].cantidad     += c.cantidad;
+        segmentacionMap[seg].totalVentas  += monto;
       });
 
       // Gráfico barras
       const ctx1 = document.getElementById('chartTipoContrato').getContext('2d');
       const ordenFijo = ['Nuevos', 'Recompra', 'Orientación Vocacional', 'Conócete', 'Otros'];
-      const tipoContratoLabels = ordenFijo.filter(label => tipoContratoMap[label] !== undefined);
-      const tipoContratoValues = tipoContratoLabels.map(label => tipoContratoMap[label].totalVentas);
-      const tipoContratoColors = tipoContratoLabels.map(label => getColorByContractType(label));
+      const labels = ordenFijo.filter(l => tipoContratoMap[l] !== undefined);
 
       if (window._chart1) window._chart1.destroy();
       window._chart1 = new Chart(ctx1, {
         type: 'bar',
         data: {
-          labels: tipoContratoLabels,
-          datasets: [{ 
-            label: 'Total de ventas', 
-            data: tipoContratoValues, 
-            backgroundColor: tipoContratoColors
+          labels,
+          datasets: [{
+            label: 'Total de ventas',
+            data: labels.map(l => tipoContratoMap[l].totalVentas),
+            backgroundColor: labels.map(l => getColorByContractType(l))
           }]
         },
         options: {
@@ -215,49 +143,42 @@
           interaction: { mode: 'nearest', intersect: false },
           maintainAspectRatio: false,
           scales: { y: { beginAtZero: true } },
-          plugins: { 
-            legend: { display: true }, 
-            tooltip: { callbacks: { label: ctx => `$${ctx.raw.toLocaleString()}` } } 
+          plugins: {
+            legend: { display: true },
+            tooltip: { callbacks: { label: ctx => formatMoney(ctx.raw) } }
           }
         }
       });
 
-      // Tabla con columna de cantidad de operaciones
-      const totalVentasGlobal   = tipoContratoLabels.reduce((s, l) => s + tipoContratoMap[l].totalVentas, 0);
-      const totalCantidadGlobal = tipoContratoLabels.reduce((s, l) => s + tipoContratoMap[l].cantidad, 0);
-
-      const tbody = document.getElementById('tablaTipoContrato');
-      tbody.innerHTML = tipoContratoLabels.map(label => `
-        <tr>
-          <td><strong>${label}</strong></td>
-          <td>${formatMoney(tipoContratoMap[label].totalVentas)}</td>
-          <td>${tipoContratoMap[label].cantidad}</td>
-        </tr>
-      `).join('') + `
+      // Tabla
+      const totalV = labels.reduce((s, l) => s + tipoContratoMap[l].totalVentas, 0);
+      const totalC = labels.reduce((s, l) => s + tipoContratoMap[l].cantidad, 0);
+      document.getElementById('tablaTipoContrato').innerHTML =
+        labels.map(l => `
+          <tr>
+            <td><strong>${l}</strong></td>
+            <td>${formatMoney(tipoContratoMap[l].totalVentas)}</td>
+            <td>${tipoContratoMap[l].cantidad}</td>
+          </tr>
+        `).join('') + `
         <tr style="border-top:2px solid #cbd5e1; background:#f1f5f9">
           <td><strong>Total</strong></td>
-          <td><strong>${formatMoney(totalVentasGlobal)}</strong></td>
-          <td><strong>${totalCantidadGlobal}</strong></td>
-        </tr>
-      `;
+          <td><strong>${formatMoney(totalV)}</strong></td>
+          <td><strong>${totalC}</strong></td>
+        </tr>`;
 
-      // Gráfico circular — tooltip muestra Ventas totales (cantidad de operaciones)
+      // Gráfico circular
       const ctx2 = document.getElementById('chartSegmentacion').getContext('2d');
       if (window._chart2) window._chart2.destroy();
-
-      const segLabels = Object.keys(segmentacionMap);
-      const segCantidades = segLabels.map(k => segmentacionMap[k].cantidad);
-      const segTotalVentas = segLabels.map(k => segmentacionMap[k].totalVentas);
-      const totalCantidad = segCantidades.reduce((a, b) => a + b, 0);
+      const segLabels   = Object.keys(segmentacionMap);
+      const segCants    = segLabels.map(k => segmentacionMap[k].cantidad);
+      const totalCant   = segCants.reduce((a, b) => a + b, 0);
 
       window._chart2 = new Chart(ctx2, {
         type: 'doughnut',
         data: {
           labels: segLabels,
-          datasets: [{ 
-            data: segCantidades, 
-            backgroundColor: [COLORS.B2B, COLORS.MARKETPLACE]
-          }]
+          datasets: [{ data: segCants, backgroundColor: [COLORS.B2B, COLORS.MARKETPLACE] }]
         },
         options: {
           responsive: true,
@@ -268,10 +189,8 @@
               callbacks: {
                 label: ctx => {
                   const idx = ctx.dataIndex;
-                  const pct = totalCantidad > 0 ? ((segCantidades[idx] / totalCantidad) * 100).toFixed(1) : 0;
-                  return [
-                    `Ventas totales: ${segCantidades[idx]} (${pct}%)`,
-                  ];
+                  const pct = totalCant > 0 ? ((segCants[idx] / totalCant) * 100).toFixed(1) : 0;
+                  return `Ventas totales: ${segCants[idx]} (${pct}%)`;
                 }
               }
             }
@@ -280,26 +199,12 @@
       });
     }
 
-    (async () => {
-      await cargarMesesYAños();
-      const mesSelect = document.getElementById('mesSelect');
-      
-      const firstValue = mesSelect.value;
-      if (firstValue.startsWith('mes:')) {
-        await render(firstValue.substring(4), null);
-      } else if (firstValue.startsWith('año:')) {
-        await render(null, firstValue.substring(4));
-      }
-
-      mesSelect.addEventListener('change', async (e) => {
-        const value = e.target.value;
-        if (value.startsWith('mes:')) {
-          await render(value.substring(4), null);
-        } else if (value.startsWith('año:')) {
-          await render(null, value.substring(4));
-        }
-      });
-    })();
+    const ps = new PeriodSelector({
+      container:    document.getElementById('periodoContainer'),
+      showPPToggle: true,
+      onChange: ({ mes, año, includePP }) => render(mes, año, includePP)
+    });
+    ps.init();
   </script>
 </body>
 </html>
