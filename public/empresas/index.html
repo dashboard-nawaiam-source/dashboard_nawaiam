@@ -8,20 +8,16 @@
     body { font-family: system-ui, Arial; background:#f7fafc; padding:24px }
     .card { max-width:1000px; margin:auto; background:#fff; padding:20px; border-radius:8px }
     h1 { margin-bottom:4px }
-    .mes-selector { margin-bottom:24px; display:flex; gap:12px; align-items:center }
-    .mes-selector label { font-weight:600; font-size:14px }
-    .mes-selector select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:4px; font-size:14px; cursor:pointer; min-width:200px }
     .total { font-size:16px; font-weight:600; margin-bottom:16px }
     .data-table { width: 100%; border-collapse: collapse; }
     .data-table th { background: #f1f5f9; padding: 8px; text-align: left; border: 1px solid #e2e8f0; font-weight: 600; font-size: 12px; }
     .data-table td { padding: 8px; border: 1px solid #e2e8f0; font-size: 14px; }
     .data-table tr:nth-child(even) { background: #f8fafc; }
-
     .empresa-block h3 { font-size:15px; font-weight:600; margin-bottom:4px; color:#0f172a }
-    .empresa-block .empresa-subtotal { font-size:13px; color:#64748b; margin-bottom:8px }
     .empresa-block canvas { max-width:100%; height:420px; margin-bottom:32px }
   </style>
   <script src="../components/auth.js"></script>
+  <script src="../components/period-selector.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
 </head>
 <body>
@@ -29,12 +25,7 @@
   <div class="card">
     <h1>Empresas</h1>
 
-    <div class="mes-selector">
-      <label for="mesSelect">Período:</label>
-      <select id="mesSelect">
-        <option value="">Cargando...</option>
-      </select>
-    </div>
+    <div id="periodoContainer"></div>
 
     <div id="total" class="total">Cargando...</div>
 
@@ -44,7 +35,7 @@
       <thead>
         <tr>
           <th>Empresa</th>
-          <th>Ingresos sin prueba piloto</th>
+          <th>Total</th>
           <th>Cantidad de Facturas</th>
           <th>% de Ventas</th>
         </tr>
@@ -55,79 +46,27 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
-    if (!Auth.isAuthenticated()) {
-      window.location.href = '/login';
-    }
-
-    async function cargarMesesYAños() {
-      try {
-        const res = await Auth.fetch('/facturas/meses');
-        const json = await res.json();
-        const mesesActual = json.data.mesesActual || [];
-        const años = json.data.años || [];
-
-        const mesSelect = document.getElementById('mesSelect');
-        mesSelect.innerHTML = '';
-
-        mesesActual.forEach(mes => {
-          const option = document.createElement('option');
-          option.value = `mes:${mes}`;
-          const [mesNum, año] = mes.split('-');
-          const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-          option.textContent = `${mesesNombres[parseInt(mesNum) - 1]} ${año}`;
-          mesSelect.appendChild(option);
-        });
-
-        if (mesesActual.length > 0 && años.length > 0) {
-          const separator = document.createElement('option');
-          separator.disabled = true;
-          separator.textContent = 'Acumulados Anuales:';
-          mesSelect.appendChild(separator);
-        }
-
-        años.forEach(año => {
-          const option = document.createElement('option');
-          option.value = `año:${año}`;
-          option.textContent = `${año}`;
-          mesSelect.appendChild(option);
-        });
-
-        if (mesesActual.length > 0) {
-          mesSelect.value = `mes:${mesesActual[0]}`;
-        }
-      } catch (e) {
-        if (e.message === 'AUTH_REQUIRED') {
-          window.location.href = '/login';
-          return;
-        }
-        console.error('Error cargando meses y años:', e);
-      }
-    }
+    if (!Auth.isAuthenticated()) { window.location.href = '/login'; }
 
     async function fetchData(mes, año) {
       try {
         let url = '/facturas/empresas';
         const params = [];
         if (mes) params.push(`mes=${mes}`);
-        if (año) params.push(`año=${año}`);
-        if (params.length > 0) url += '?' + params.join('&');
-
+        else if (año) params.push(`año=${año}`);
+        if (params.length) url += '?' + params.join('&');
         const res = await Auth.fetch(url);
         const json = await res.json();
         return json.data;
       } catch(e) {
-        if (e.message === 'AUTH_REQUIRED') {
-          window.location.href = '/login';
-          return null;
-        }
-        console.error(e);
-        return null;
+        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return null; }
+        console.error(e); return null;
       }
     }
 
     function mapEmpresa(empresa) {
-      const cleaned = empresa?.trim().toLowerCase() || '';
-      switch(cleaned) {
+      const c = empresa?.trim().toLowerCase() || '';
+      switch(c) {
         case 'nawaiam sa':          return 'Argentina';
         case 'nawaiam españa':      return 'España';
         case 'tu primera pega spa': return 'Chile';
@@ -140,22 +79,20 @@
     }
 
     const DIM_COLORS = ['#22c55e', '#60a5fa', '#f97316', '#a78bfa', '#f43f5e', '#facc15', '#34d399', '#fb923c'];
-
     let chartInstances = [];
 
-    async function render(mes, año) {
+    async function render(mes, año, includePP) {
       const resultado = await fetchData(mes, año);
       if (!resultado) return;
 
       chartInstances.forEach(c => c.destroy());
       chartInstances = [];
 
+      // Construir mapa por región
       const empresaMap = {};
       resultado.datos.forEach(f => {
         const region = mapEmpresa(f.empresa);
-        if (!empresaMap[region]) {
-          empresaMap[region] = { ingresos: 0, ventas: 0, dimensiones: {} };
-        }
+        if (!empresaMap[region]) empresaMap[region] = { ingresos: 0, ventas: 0, dimensiones: {} };
         empresaMap[region].ingresos += Number(f.totalVentas) || 0;
         empresaMap[region].ventas   += Number(f.cantidadFacturas) || 0;
         Object.entries(f.dimensiones || {}).forEach(([dim, val]) => {
@@ -163,37 +100,44 @@
         });
       });
 
-      const ordenFijoEmpresas = ['Argentina', 'España', 'Chile', 'Otros'];
-      const sortedEmpresas = ordenFijoEmpresas
-        .filter(e => empresaMap[e])
-        .map(e => [e, empresaMap[e]]);
+      const ordenFijo      = ['Argentina', 'España', 'Chile', 'Otros'];
+      const sortedEmpresas = ordenFijo.filter(e => empresaMap[e]).map(e => [e, empresaMap[e]]);
 
-      const totalIngresos = sortedEmpresas.reduce((s, [, d]) => s + d.ingresos, 0);
-      const totalVentas   = sortedEmpresas.reduce((s, [, d]) => s + d.ventas, 0);
-      const totalIngresosSinPiloto = sortedEmpresas.reduce((s, [, d]) => {
-        const piloto = Object.entries(d.dimensiones || {}).reduce((acc, [k, v]) => acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
-        return s + (Number(d.ingresos || 0) - piloto);
+      // Helper: monto PP de un mapa de dimensiones
+      function ppDe(dimensiones) {
+        return Object.entries(dimensiones || {}).reduce((acc, [k, v]) =>
+          acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
+      }
+
+      // Total general mostrado según toggle
+      const totalVentasGlobal = sortedEmpresas.reduce((s, [, d]) => {
+        const pp = ppDe(d.dimensiones);
+        return s + (includePP ? d.ingresos : d.ingresos - pp);
       }, 0);
+      const totalFacturas = sortedEmpresas.reduce((s, [, d]) => s + d.ventas, 0);
 
       document.getElementById('total').textContent =
-        `Ingresos totales: ${formatMoney(totalIngresos)} · Ventas: ${totalVentas}`;
+        `Total: ${formatMoney(totalVentasGlobal)} · Facturas: ${totalFacturas}`;
 
       const container = document.getElementById('empresaCharts');
       container.innerHTML = '';
 
       sortedEmpresas.forEach(([region, data]) => {
-        const dims = Object.entries(data.dimensiones || {}).sort((a, b) => b[1] - a[1]);
-        const pilotoVal = Object.entries(data.dimensiones || {}).reduce((acc, [k, v]) => acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
-        const labels = ['Total sin prueba piloto', ...dims.map(([d]) => d)];
-        const values = [Number(data.ingresos || 0) - pilotoVal, ...dims.map(([, v]) => v)];
+        const pp = ppDe(data.dimensiones);
+
+        // Dimensiones a mostrar: si PP excluido, quitarlo
+        let dims = Object.entries(data.dimensiones || {}).sort((a, b) => b[1] - a[1]);
+        if (!includePP) dims = dims.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
+
+        const totalMostrado = includePP ? Number(data.ingresos || 0) : Number(data.ingresos || 0) - pp;
+
+        const labels = ['Total', ...dims.map(([d]) => d)];
+        const values = [totalMostrado, ...dims.map(([, v]) => v)];
         const colors = ['#0ea5a4', ...dims.map((_, i) => DIM_COLORS[i % DIM_COLORS.length])];
 
         const block = document.createElement('div');
         block.className = 'empresa-block';
-        block.innerHTML = `
-          <h3>${region}</h3>
-          <canvas id="chart-${region}"></canvas>
-        `;
+        block.innerHTML = `<h3>${region}</h3><canvas id="chart-${region}"></canvas>`;
         container.appendChild(block);
 
         const ctx = block.querySelector(`#chart-${region}`).getContext('2d');
@@ -201,11 +145,7 @@
           type: 'bar',
           data: {
             labels,
-            datasets: [{
-              label: 'Ingresos',
-              data: values,
-              backgroundColor: colors,
-            }]
+            datasets: [{ label: 'Ingresos', data: values, backgroundColor: colors }]
           },
           options: {
             responsive: true,
@@ -214,51 +154,32 @@
               legend: { display: false },
               tooltip: { callbacks: { label: ctx => formatMoney(ctx.raw) } }
             },
-            scales: {
-              y: {
-                beginAtZero: true,
-                ticks: { callback: v => formatMoney(v) }
-              }
-            }
+            scales: { y: { beginAtZero: true, ticks: { callback: v => formatMoney(v) } } }
           }
         });
         chartInstances.push(instance);
       });
 
-      const tbody = document.getElementById('tablaEmpresas');
-      tbody.innerHTML = sortedEmpresas.map(([empresa, data]) => {
-        const pilotoVal = Object.entries(data.dimensiones || {}).reduce((acc, [k, v]) => acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
-        const netIngresos = Number(data.ingresos || 0) - pilotoVal;
+      // Tabla
+      document.getElementById('tablaEmpresas').innerHTML = sortedEmpresas.map(([empresa, data]) => {
+        const pp          = ppDe(data.dimensiones);
+        const totalMostrado = includePP ? Number(data.ingresos || 0) : Number(data.ingresos || 0) - pp;
         return `
         <tr>
           <td><strong>${empresa}</strong></td>
-          <td>${formatMoney(netIngresos)}</td>
+          <td>${formatMoney(totalMostrado)}</td>
           <td>${data.ventas}</td>
-          <td>${totalVentas > 0 ? ((data.ventas / totalVentas) * 100).toFixed(1) : 0}%</td>
-        </tr>
-      `}).join('');
+          <td>${totalFacturas > 0 ? ((data.ventas / totalFacturas) * 100).toFixed(1) : 0}%</td>
+        </tr>`;
+      }).join('');
     }
 
-    (async () => {
-      await cargarMesesYAños();
-      const mesSelect = document.getElementById('mesSelect');
-
-      const firstValue = mesSelect.value;
-      if (firstValue.startsWith('mes:')) {
-        await render(firstValue.substring(4), null);
-      } else if (firstValue.startsWith('año:')) {
-        await render(null, firstValue.substring(4));
-      }
-
-      mesSelect.addEventListener('change', async (e) => {
-        const value = e.target.value;
-        if (value.startsWith('mes:')) {
-          await render(value.substring(4), null);
-        } else if (value.startsWith('año:')) {
-          await render(null, value.substring(4));
-        }
-      });
-    })();
+    const ps = new PeriodSelector({
+      container:    document.getElementById('periodoContainer'),
+      showPPToggle: true,
+      onChange: ({ mes, año, includePP }) => render(mes, año, includePP)
+    });
+    ps.init();
   </script>
 </body>
 </html>
