@@ -40,33 +40,14 @@ npm run dev
 
 ## 📡 Endpoints
 
-### Clientes
+### Facturas
 ```bash
-GET  /clientes                    # Todos los clientes
-GET  /clientes/:id                # Cliente por ID
-GET  /clientes/estadisticas       # Estadísticas
-```
-
-### Productos
-```bash
-GET  /productos                   # Todos los productos
-GET  /productos/:id               # Producto por ID
-GET  /productos/estadisticas      # Estadísticas
-```
-
-## 📝 Ejemplo
-
-```bash
-curl http://localhost:3000/clientes
-```
-
-Respuesta:
-```json
-{
-  "success": true,
-  "data": [...],
-  "total": 5
-}
+GET  /facturas
+GET  /productos
+GET  /vendedores
+GET  /contratos
+GET  /empresas
+GET  /kpis
 ```
 
 ## 🏗️ Build
