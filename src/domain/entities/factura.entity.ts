@@ -1,7 +1,7 @@
 export interface Factura {
   transaccionId: string;
-  fecha: string; // formato DD-MM-YYYY
-  mes: string;  // formato MM-YYYY extraído de fecha
+  fecha: string;
+  mes: string;
   cliente: string;
   vendedor: string;
   producto: string;
