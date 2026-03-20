@@ -1,3 +1,15 @@
+/**
+ * nav-bar-custom.js
+ *
+ * Responsabilidad: renderizar la barra de navegación y el modal PDF,
+ * y coordinar PdfSectionBuilder (construye datos) y PdfGenerator (escribe el PDF).
+ *
+ * Ya NO contiene: lógica de fetching, construcción de charts, ni escritura PDF. (#5)
+ *
+ * Requiere (en orden):
+ *   utils.js, pdf-section-builder.js, pdf-generator.js
+ */
+
 class NavBarCustom extends HTMLElement {
   connectedCallback() {
     this.innerHTML = `
@@ -14,59 +26,35 @@ class NavBarCustom extends HTMLElement {
       </div>
       <div style="margin-bottom:16px">
         <button id="nav-pdf-btn" style="
-          padding:7px 16px;
-          background:#0ea5a4;
-          color:#fff;
-          border:none;
-          border-radius:6px;
-          font-weight:600;
-          font-size:13px;
-          cursor:pointer;
-          display:inline-flex;
-          align-items:center;
-          gap:6px;
-        ">
-          ↓ Descargar PDF
-        </button>
+          padding:7px 16px;background:#0ea5a4;color:#fff;border:none;
+          border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;
+          display:inline-flex;align-items:center;gap:6px;
+        ">↓ Descargar PDF</button>
       </div>
 
       <!-- Modal PDF -->
       <div id="pdf-modal-overlay" style="
-        display:none;
-        position:fixed;
-        inset:0;
-        background:rgba(0,0,0,0.45);
-        z-index:9999;
-        align-items:center;
-        justify-content:center;
+        display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);
+        z-index:9999;align-items:center;justify-content:center;
       ">
         <div style="
-          background:#fff;
-          border-radius:10px;
-          padding:28px 32px;
-          width:100%;
-          max-width:420px;
-          box-shadow:0 8px 32px rgba(0,0,0,0.18);
-          position:relative;
+          background:#fff;border-radius:10px;padding:28px 32px;
+          width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,0.18);position:relative;
         ">
           <h2 style="font-size:17px;font-weight:700;margin-bottom:4px;color:#0f172a">Generar PDF</h2>
           <p style="font-size:13px;color:#64748b;margin-bottom:20px">Seleccioná el período y las pestañas a incluir.</p>
 
-          <!-- Selector período en cascada -->
+          <!-- Selector período -->
           <div style="margin-bottom:18px">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
               <label style="font-size:13px;font-weight:600;color:#475569;width:40px">Año:</label>
-              <select id="pdf-año-select" style="
-                padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;min-width:150px;
-              ">
+              <select id="pdf-año-select" style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;min-width:150px">
                 <option value="">Cargando...</option>
               </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <label style="font-size:13px;font-weight:600;color:#475569;width:40px">Mes:</label>
-              <select id="pdf-mes-select" style="
-                padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;min-width:150px;
-              ">
+              <select id="pdf-mes-select" style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;min-width:150px">
                 <option value="">No especificar</option>
               </select>
             </div>
@@ -75,33 +63,18 @@ class NavBarCustom extends HTMLElement {
           <!-- Pestañas -->
           <div style="margin-bottom:18px">
             <label style="font-size:13px;font-weight:600;color:#475569;display:block;margin-bottom:10px">Pestañas a incluir</label>
-            <div style="display:flex;flex-direction:column;gap:8px" id="pdf-tabs-list">
-              <!-- generado dinámicamente -->
-            </div>
+            <div style="display:flex;flex-direction:column;gap:8px" id="pdf-tabs-list"></div>
           </div>
 
-          <!-- Toggle PP — solo visible si General está chequeado -->
+          <!-- Toggle PP -->
           <div id="pdf-pp-row" style="
-            display:flex;
-            align-items:center;
-            gap:10px;
-            margin-bottom:18px;
-            padding:10px 12px;
-            background:#f8fafc;
-            border:1px solid #e2e8f0;
-            border-radius:6px;
+            display:flex;align-items:center;gap:10px;margin-bottom:18px;
+            padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;
           ">
             <label style="position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0">
               <input type="checkbox" id="pdf-toggle-pp" style="opacity:0;width:0;height:0;position:absolute">
-              <span id="pdf-pp-slider" style="
-                position:absolute;cursor:pointer;inset:0;
-                background:#e2e8f0;border-radius:20px;transition:.2s;
-              "></span>
-              <span id="pdf-pp-knob" style="
-                position:absolute;content:'';height:14px;width:14px;
-                left:3px;bottom:3px;background:#fff;border-radius:50%;
-                transition:.2s;pointer-events:none;
-              "></span>
+              <span id="pdf-pp-slider" style="position:absolute;cursor:pointer;inset:0;background:#e2e8f0;border-radius:20px;transition:.2s"></span>
+              <span id="pdf-pp-knob"   style="position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;pointer-events:none"></span>
             </label>
             <label for="pdf-toggle-pp" style="font-size:13px;color:#475569;cursor:pointer">Incluir Prueba Piloto</label>
           </div>
@@ -109,33 +82,24 @@ class NavBarCustom extends HTMLElement {
           <!-- Botones -->
           <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
             <button id="pdf-cancel-btn" style="
-              padding:8px 18px;border:1px solid #e2e8f0;
-              background:#fff;border-radius:6px;
-              font-size:13px;font-weight:600;cursor:pointer;color:#475569;
+              padding:8px 18px;border:1px solid #e2e8f0;background:#fff;
+              border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;color:#475569;
             ">Cancelar</button>
             <button id="pdf-generate-btn" style="
-              padding:8px 18px;background:#0ea5a4;
-              color:#fff;border:none;border-radius:6px;
-              font-size:13px;font-weight:600;cursor:pointer;
+              padding:8px 18px;background:#0ea5a4;color:#fff;border:none;
+              border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;
             ">Generar PDF</button>
           </div>
 
           <!-- Estado generando -->
           <div id="pdf-loading" style="
-            display:none;
-            position:absolute;inset:0;
-            background:rgba(255,255,255,0.92);
-            border-radius:10px;
-            align-items:center;justify-content:center;
-            flex-direction:column;gap:12px;
-            font-size:14px;font-weight:600;color:#0ea5a4;
+            display:none;position:absolute;inset:0;background:rgba(255,255,255,0.92);
+            border-radius:10px;align-items:center;justify-content:center;
+            flex-direction:column;gap:12px;font-size:14px;font-weight:600;color:#0ea5a4;
           ">
-            <div id="pdf-loading-spinner" style="
-              width:32px;height:32px;
-              border:3px solid #e2e8f0;
-              border-top-color:#0ea5a4;
-              border-radius:50%;
-              animation:spin .8s linear infinite;
+            <div style="
+              width:32px;height:32px;border:3px solid #e2e8f0;
+              border-top-color:#0ea5a4;border-radius:50%;animation:spin .8s linear infinite;
             "></div>
             <span id="pdf-loading-msg">Generando PDF...</span>
           </div>
@@ -148,22 +112,30 @@ class NavBarCustom extends HTMLElement {
       </style>
     `;
 
-    // Nav select
+    this._initNav();
+    this._initTabs();
+    this._initTogglePP();
+    this._initModal();
+  }
+
+  // ── Inicialización de partes de la UI ──────────────────────────────────────
+
+  _initNav() {
     const select = this.querySelector('#nav-select');
     select.value = window.location.pathname;
     select.addEventListener('change', e => { window.location.href = e.target.value; });
+  }
 
-    // Tabs config
+  _initTabs() {
     const TABS = [
-      { id: 'general',    label: 'General',             endpoint: 'dashboardGeneral',    available: true },
-      { id: 'productos',  label: 'Ventas por Producto',  endpoint: 'ventas-por-producto', available: true },
-      { id: 'vendedores', label: 'Ranking Vendedores',   endpoint: 'ranking-vendedores',  available: true },
-      { id: 'contratos',  label: 'Contratos',            endpoint: 'contratos',           available: true },
-      { id: 'empresas',   label: 'Empresas',             endpoint: 'empresas',            available: true },
-      { id: 'kpis',       label: 'KPIs (no disponible)', endpoint: null,                  available: false },
+      { id: 'general',    label: 'General',             available: true  },
+      { id: 'productos',  label: 'Ventas por Producto',  available: true  },
+      { id: 'vendedores', label: 'Ranking Vendedores',   available: true  },
+      { id: 'contratos',  label: 'Contratos',            available: true  },
+      { id: 'empresas',   label: 'Empresas',             available: true  },
+      { id: 'kpis',       label: 'KPIs (no disponible)', available: false },
     ];
 
-    // Render checkboxes
     const tabsList = this.querySelector('#pdf-tabs-list');
     TABS.forEach(tab => {
       const row = document.createElement('label');
@@ -175,8 +147,9 @@ class NavBarCustom extends HTMLElement {
       `;
       tabsList.appendChild(row);
     });
+  }
 
-    // Toggle PP slider visual
+  _initTogglePP() {
     const ppInput  = this.querySelector('#pdf-toggle-pp');
     const ppSlider = this.querySelector('#pdf-pp-slider');
     const ppKnob   = this.querySelector('#pdf-pp-knob');
@@ -184,14 +157,14 @@ class NavBarCustom extends HTMLElement {
       ppSlider.style.background = ppInput.checked ? '#0ea5a4' : '#e2e8f0';
       ppKnob.style.transform    = ppInput.checked ? 'translateX(16px)' : 'translateX(0)';
     });
+  }
 
-    // Año → Mes cascade
+  _initModal() {
+    const overlay   = this.querySelector('#pdf-modal-overlay');
     const añoSelect = this.querySelector('#pdf-año-select');
-    const mesSelect = this.querySelector('#pdf-mes-select');
+
     añoSelect.addEventListener('change', () => this._llenarMesesPDF(añoSelect.value));
 
-    // Open/close modal
-    const overlay = this.querySelector('#pdf-modal-overlay');
     this.querySelector('#nav-pdf-btn').addEventListener('click', () => {
       overlay.style.display = 'flex';
       this._cargarPeriodos();
@@ -202,11 +175,11 @@ class NavBarCustom extends HTMLElement {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) overlay.style.display = 'none';
     });
-
     this.querySelector('#pdf-generate-btn').addEventListener('click', () => this._generarPDF());
   }
 
-  // ─── Carga años y meses ──────────────────────────────────────────────────────
+  // ── Carga de períodos ──────────────────────────────────────────────────────
+
   async _cargarPeriodos() {
     try {
       const token = localStorage.getItem('dashboard_token');
@@ -216,7 +189,6 @@ class NavBarCustom extends HTMLElement {
       this._mesesPorAño = json.data.mesesPorAño || {};
       const años        = json.data.años || [];
 
-      // Fallback para backend viejo
       if (!Object.keys(this._mesesPorAño).length && json.data.mesesActual) {
         const añoActual = años[0] || new Date().getFullYear().toString();
         this._mesesPorAño[añoActual] = json.data.mesesActual;
@@ -234,12 +206,12 @@ class NavBarCustom extends HTMLElement {
         añoSelect.value = años[0];
         this._llenarMesesPDF(años[0]);
       }
-    } catch(e) { console.error('Error cargando períodos PDF:', e); }
+    } catch (e) { console.error('Error cargando períodos PDF:', e); }
   }
 
   _llenarMesesPDF(año) {
-    const NOMBRES  = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    const meses    = (this._mesesPorAño || {})[año] || [];
+    const NOMBRES   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const meses     = (this._mesesPorAño || {})[año] || [];
     const mesSelect = this.querySelector('#pdf-mes-select');
 
     mesSelect.innerHTML = '';
@@ -249,248 +221,24 @@ class NavBarCustom extends HTMLElement {
 
     meses.forEach(m => {
       const [mn] = m.split('-');
-      const opt = document.createElement('option');
+      const opt  = document.createElement('option');
       opt.value = m; opt.textContent = NOMBRES[parseInt(mn) - 1];
       mesSelect.appendChild(opt);
     });
 
-    // Seleccionar el primer mes por defecto
     if (meses.length) mesSelect.value = meses[0];
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
-  async _fetchJSON(endpoint, mes, año) {
-    const token = localStorage.getItem('dashboard_token');
-    const params = [];
-    if (mes) params.push(`mes=${mes}`);
-    else if (año) params.push(`año=${año}`);
-    const url = `/facturas/${endpoint}${params.length ? '?' + params.join('&') : ''}`;
-    const res = await fetch(url, { headers: { 'x-auth-token': token } });
-    const json = await res.json();
-    return json.data;
-  }
-
-  _formatMoney(v) {
-    return new Intl.NumberFormat('es-AR', { style:'currency', currency:'ARS' }).format(v);
-  }
-
-  _mapProducto(producto) {
-    const c = producto?.trim().toLowerCase() || '';
-    if (c.includes('otros'))          return 'Otros Servicios';
-    if (c.includes('representacion')) return 'Representaciones';
-    if (c.includes('vocacional'))     return 'Orientación Vocacional';
-    if (c.includes('nawi'))           return 'Nawi';
-    return 'Nawaiam';
-  }
-
-  _mapEmpresa(empresa) {
-    const c = empresa?.trim().toLowerCase() || '';
-    switch(c) {
-      case 'nawaiam sa':          return 'Argentina';
-      case 'nawaiam españa':      return 'España';
-      case 'tu primera pega spa': return 'Chile';
-      default:                    return 'Otros';
-    }
-  }
-
-  _mapContractType(n) {
-    const c = n.trim().toLowerCase();
-    switch(c) {
-      case '0001': return 'Nuevos';
-      case '0002': return 'Recompra';
-      case 'orientación vocacional': return 'Orientación Vocacional';
-      case 'conócete': return 'Conócete';
-      default: return 'Otros';
-    }
-  }
-
-  async _renderChart(type, data, options, ratio = 2.8) {
-    const baseW = 700;
-    const baseH = Math.round(baseW / ratio);
-    const canvas = document.createElement('canvas');
-    canvas.width  = baseW;
-    canvas.height = baseH;
-    canvas.style.position = 'absolute';
-    canvas.style.left = '-9999px';
-    document.body.appendChild(canvas);
-    const chart = new Chart(canvas.getContext('2d'), {
-      type,
-      data,
-      options: { ...options, animation: false, responsive: false }
-    });
-    await new Promise(r => setTimeout(r, 150));
-    const imgData = canvas.toDataURL('image/png');
-    chart.destroy();
-    document.body.removeChild(canvas);
-    return { imgData, ratio };
-  }
-
-  async _buildSection(tabId, mes, año, incluirPP) {
-    const fmt       = this._formatMoney.bind(this);
-    const DIM_COLORS = ['#22c55e','#60a5fa','#f97316','#a78bfa','#f43f5e','#facc15','#34d399','#fb923c'];
-
-    if (tabId === 'general') {
-      const d = await this._fetchJSON('dashboardGeneral', mes, año);
-      let dimEntries = Object.entries(d.dimensiones || {});
-      if (!incluirPP) dimEntries = dimEntries.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
-      const pilotoVal   = incluirPP ? 0 : Object.entries(d.dimensiones || {}).reduce((a,[k,v]) => a + (k.trim().toLowerCase()==='prueba piloto'?Number(v):0), 0);
-      const totalLabel  = incluirPP ? 'Total' : 'Total sin prueba piloto';
-      const totalMostrado = Number(d.totalVentas||0) - pilotoVal;
-
-      const labels = [totalLabel, ...dimEntries.map(([k])=>k), 'Promedio por factura', 'Cantidad facturas'];
-      const values = [totalMostrado, ...dimEntries.map(([,v])=>v), d.promedioPorFactura, d.cantidadFacturas];
-      const colors = ['#0ea5a4', ...dimEntries.map((_,i)=>DIM_COLORS[i%DIM_COLORS.length]), '#f97316','#60a5fa'];
-      const max    = Math.max(...values.map(v=>Math.abs(v)||0));
-      const scaled = values.map(v => max ? (v/max)*100 : 0);
-
-      const chartImg = await this._renderChart('bar', {
-        labels,
-        datasets: [{ label:'Comparación (normalizada)', data:scaled, backgroundColor:colors }]
-      }, { plugins:{ legend:{display:false} }, scales:{ y:{ beginAtZero:true, ticks:{callback:v=>v+'%'} } } }, 2.8);
-
-      const rows = [
-        `<tr><td><strong>${totalLabel}</strong></td><td>${fmt(totalMostrado)}</td></tr>`,
-        ...dimEntries.map(([k,v]) => `<tr style="background:#f8fafc"><td>&nbsp;&nbsp;↳ ${k}</td><td>${fmt(v)}</td></tr>`),
-        `<tr><td><strong>Promedio por Factura</strong></td><td>${fmt(d.promedioPorFactura)}</td></tr>`,
-        `<tr><td><strong>Cantidad de Facturas</strong></td><td>${d.cantidadFacturas}</td></tr>`,
-      ].join('');
-
-      return { title: 'General', chartImgs: [chartImg], tableHtml: rows, tableHeaders: ['Métrica','Valor'] };
-    }
-
-    if (tabId === 'productos') {
-      const d    = await this._fetchJSON('ventas-por-producto', mes, año);
-      const datos = incluirPP
-        ? (d.datos || [])
-        : (d.datos || []).filter(item => (item.dimensionValor||'').trim().toLowerCase() !== 'prueba piloto');
-
-      const catMap = {};
-      datos.forEach(item => {
-        const cat = this._mapProducto(item.producto);
-        catMap[cat] = (catMap[cat]||0) + item.totalVentas;
-      });
-      const catEntries = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
-      const img1 = await this._renderChart('bar', {
-        labels: catEntries.map(([k])=>k),
-        datasets: [{ label:'Por categoría', data:catEntries.map(([,v])=>v), backgroundColor:'#60a5fa' }]
-      }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } }, 2.8);
-
-      const sorted = [...datos].sort((a,b)=>b.totalVentas-a.totalVentas);
-      const img2 = await this._renderChart('bar', {
-        labels: sorted.map(d=>d.producto||'Sin producto'),
-        datasets: [{ label:'Por subproducto', data:sorted.map(d=>d.totalVentas), backgroundColor:'#a78bfa' }]
-      }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } }, 2.8);
-
-      const rows = catEntries.map(([k,v]) => `<tr><td><strong>${k}</strong></td><td>${fmt(v)}</td></tr>`).join('');
-      return { title:'Ventas por Producto', chartImgs:[img1,img2], tableHtml:rows, tableHeaders:['Categoría','Total'] };
-    }
-
-    if (tabId === 'vendedores') {
-      const d    = await this._fetchJSON('ranking-vendedores', mes, año);
-      const datos = (d.datos||[]).map(d => ({
-        ...d,
-        ingresos: incluirPP ? d.ingresos : (d.ingresos - (d.ingresospp || 0))
-      })).sort((a,b)=>b.ingresos-a.ingresos);
-
-      const img = await this._renderChart('bar', {
-        labels: datos.map(d=>d.vendedor),
-        datasets: [{ label:'Ingresos', data:datos.map(d=>d.ingresos), backgroundColor:'#22c55e' }]
-      }, { plugins:{ tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{ticks:{callback:v=>fmt(v)}} } }, 2.8);
-
-      const rows = datos.map(d => `<tr><td><strong>${d.vendedor}</strong></td><td>${fmt(d.ingresos)}</td><td>${d.cantidadVentas}</td></tr>`).join('');
-      return { title:'Ranking Vendedores', chartImgs:[img], tableHtml:rows, tableHeaders:['Vendedor','Ingresos','Ventas'] };
-    }
-
-    if (tabId === 'contratos') {
-      const d        = await this._fetchJSON('contratos', mes, año);
-      const contratos = d.datos || [];
-      const tipoMap   = {};
-      const segMap    = { B2B:{cantidad:0,totalVentas:0}, Marketplace:{cantidad:0,totalVentas:0} };
-
-      contratos.forEach(c => {
-        const tipo  = this._mapContractType(c.numeroContrato);
-        const seg   = (c.numeroContrato==='0001'||c.numeroContrato==='0002') ? 'B2B' : 'Marketplace';
-        const monto = incluirPP ? c.totalVentas : c.totalVentasSinPP;
-        if (!tipoMap[tipo]) tipoMap[tipo] = { totalVentas:0, cantidad:0 };
-        tipoMap[tipo].totalVentas += monto;
-        tipoMap[tipo].cantidad    += c.cantidad;
-        segMap[seg].cantidad      += c.cantidad;
-        segMap[seg].totalVentas   += monto;
-      });
-
-      const orden  = ['Nuevos','Recompra','Orientación Vocacional','Conócete','Otros'];
-      const labels = orden.filter(l => tipoMap[l]);
-      const CTCOLORS = { Nuevos:'#0ea5a4', Recompra:'#0ea5a4', 'Orientación Vocacional':'#f97316', 'Conócete':'#f97316', Otros:'#f97316' };
-
-      const img1 = await this._renderChart('bar', {
-        labels,
-        datasets: [{ label:'Total de ventas', data:labels.map(l=>tipoMap[l].totalVentas), backgroundColor:labels.map(l=>CTCOLORS[l]||'#60a5fa') }]
-      }, { scales:{ y:{beginAtZero:true} } }, 2.8);
-
-      const segLabels = Object.keys(segMap);
-      const segCants  = segLabels.map(k=>segMap[k].cantidad);
-      const img2 = await this._renderChart('doughnut', {
-        labels: segLabels,
-        datasets: [{ data:segCants, backgroundColor:['#0ea5a4','#f97316'] }]
-      }, { plugins:{ legend:{display:true,position:'bottom'} } }, 1.2);
-
-      const totalV = labels.reduce((s,l)=>s+tipoMap[l].totalVentas,0);
-      const totalC = labels.reduce((s,l)=>s+tipoMap[l].cantidad,0);
-      const rows = labels.map(l=>`<tr><td><strong>${l}</strong></td><td>${fmt(tipoMap[l].totalVentas)}</td><td>${tipoMap[l].cantidad}</td></tr>`).join('')
-        + `<tr style="border-top:2px solid #cbd5e1;background:#f1f5f9"><td><strong>Total</strong></td><td><strong>${fmt(totalV)}</strong></td><td><strong>${totalC}</strong></td></tr>`;
-
-      return { title:'Contratos', chartImgs:[img1,img2], tableHtml:rows, tableHeaders:['Tipo de Contrato','Total de Ventas','Cantidad de Operaciones'] };
-    }
-
-    if (tabId === 'empresas') {
-      const d    = await this._fetchJSON('empresas', mes, año);
-      const datos = d.datos || [];
-      const empresaMap = {};
-      datos.forEach(f => {
-        const region = this._mapEmpresa(f.empresa);
-        if (!empresaMap[region]) empresaMap[region] = { ingresos:0, ventas:0, dimensiones:{} };
-        empresaMap[region].ingresos += Number(f.totalVentas)||0;
-        empresaMap[region].ventas   += Number(f.cantidadFacturas)||0;
-        Object.entries(f.dimensiones||{}).forEach(([k,v]) => {
-          empresaMap[region].dimensiones[k] = (empresaMap[region].dimensiones[k]||0)+Number(v);
-        });
-      });
-      const orden  = ['Argentina','España','Chile','Otros'];
-      const sorted = orden.filter(e=>empresaMap[e]).map(e=>[e,empresaMap[e]]);
-
-      const chartImgs = [];
-      for (const [region, data] of sorted) {
-        let dims = Object.entries(data.dimensiones||{}).sort((a,b)=>b[1]-a[1]);
-        if (!incluirPP) dims = dims.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
-        const piloto = Object.entries(data.dimensiones||{}).reduce((a,[k,v])=>a+((k||'').trim().toLowerCase()==='prueba piloto'?Number(v):0),0);
-        const lbls   = ['Total sin prueba piloto', ...dims.map(([k])=>k)];
-        const vals   = [Number(data.ingresos||0)-piloto, ...dims.map(([,v])=>v)];
-        const cols   = ['#0ea5a4', ...dims.map((_,i)=>DIM_COLORS[i%DIM_COLORS.length])];
-        const img    = await this._renderChart('bar', {
-          labels: lbls,
-          datasets: [{ label:region, data:vals, backgroundColor:cols }]
-        }, { plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>fmt(c.raw)}} }, scales:{ y:{beginAtZero:true,ticks:{callback:v=>fmt(v)}} } }, 2.8);
-        chartImgs.push({ img, region });
-      }
-
-      const totalV = sorted.reduce((s,[,d])=>s+d.ventas,0);
-      const rows = sorted.map(([emp,data]) => {
-        const piloto = Object.entries(data.dimensiones||{}).reduce((a,[k,v])=>a+((k||'').trim().toLowerCase()==='prueba piloto'?Number(v):0),0);
-        return `<tr><td><strong>${emp}</strong></td><td>${fmt(Number(data.ingresos||0)-piloto)}</td><td>${data.ventas}</td><td>${totalV>0?((data.ventas/totalV)*100).toFixed(1):0}%</td></tr>`;
-      }).join('');
-
-      return { title:'Empresas', chartImgs:chartImgs.map(c=>c.img), chartLabels:chartImgs.map(c=>c.region), tableHtml:rows, tableHeaders:['Empresa','Ingresos sin PP','Facturas','% Ventas'] };
-    }
-  }
+  // ── Generación del PDF (solo coordina, no construye ni escribe) ────────────
 
   async _generarPDF() {
     const checkedTabs = [...this.querySelectorAll('[data-tab]:checked')].map(cb => cb.dataset.tab);
     if (!checkedTabs.length) { alert('Seleccioná al menos una pestaña.'); return; }
 
-    const añoVal = this.querySelector('#pdf-año-select').value;
-    const mesVal = this.querySelector('#pdf-mes-select').value;
-    const mes    = mesVal || null;   // '' = año completo
-    const año    = añoVal || null;
+    const añoVal    = this.querySelector('#pdf-año-select').value;
+    const mesVal    = this.querySelector('#pdf-mes-select').value;
+    const mes       = mesVal || null;
+    const año       = añoVal || null;
     const incluirPP = this.querySelector('#pdf-toggle-pp').checked;
 
     const loading    = this.querySelector('#pdf-loading');
@@ -499,116 +247,24 @@ class NavBarCustom extends HTMLElement {
     this.querySelector('#pdf-generate-btn').disabled = true;
 
     try {
-      if (!window.jspdf) {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement('script');
-          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-          s.onload = resolve; s.onerror = reject;
-          document.head.appendChild(s);
-        });
-      }
+      const token   = localStorage.getItem('dashboard_token');
+      const builder = new PdfSectionBuilder(token);
+      const gen     = new PdfGenerator();
 
-      const { jsPDF } = window.jspdf;
-      const doc      = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-      const pageW    = 210;
-      const pageH    = 297;
-      const margin   = 14;
-      const contentW = pageW - margin * 2;
-      let y = margin;
+      const sections = [];
+      for (const tabId of checkedTabs) {
+        loadingMsg.textContent = `Generando sección: ${tabId}...`;
+        sections.push(await builder.build(tabId, mes, año, incluirPP));
+      }
 
       const NOMBRES      = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
       const periodoLabel = mes
-        ? `${NOMBRES[parseInt(mes.split('-')[0])-1]} ${mes.split('-')[1]}`
+        ? `${NOMBRES[parseInt(mes.split('-')[0]) - 1]} ${mes.split('-')[1]}`
         : `Año ${año}`;
 
-      doc.setFontSize(18);
-      doc.setTextColor(15,23,42);
-      doc.setFont('helvetica','bold');
-      doc.text('Dashboard', margin, y);
-      y += 7;
-      doc.setFontSize(10);
-      doc.setFont('helvetica','normal');
-      doc.setTextColor(100,116,139);
-      doc.text(`Período: ${periodoLabel}`, margin, y);
-      y += 10;
+      await gen.generar(sections, periodoLabel);
 
-      const checkY = () => { if (y > pageH - 20) { doc.addPage(); y = margin; } };
-
-      for (const tabId of checkedTabs) {
-        loadingMsg.textContent = `Generando sección: ${tabId}...`;
-
-        const section = await this._buildSection(tabId, mes, año, incluirPP);
-        if (!section) continue;
-
-        checkY();
-
-        // Título sección
-        doc.setFillColor(14,165,164);
-        doc.rect(margin, y, contentW, 8, 'F');
-        doc.setFontSize(12);
-        doc.setFont('helvetica','bold');
-        doc.setTextColor(255,255,255);
-        doc.text(section.title, margin + 3, y + 5.5);
-        y += 12;
-
-        // Gráficos
-        if (section.chartImgs && section.chartImgs.length) {
-          for (let ci = 0; ci < section.chartImgs.length; ci++) {
-            const { imgData, ratio } = section.chartImgs[ci];
-            const chartH = Math.round(contentW / ratio);
-            if (y + chartH > pageH - margin) { doc.addPage(); y = margin; }
-
-            if (section.chartLabels && section.chartLabels[ci]) {
-              doc.setFontSize(10); doc.setFont('helvetica','bold');
-              doc.setTextColor(15,23,42);
-              doc.text(section.chartLabels[ci], margin, y + 4);
-              y += 6;
-            }
-
-            doc.addImage(imgData, 'PNG', margin, y, contentW, chartH);
-            y += chartH + 6;
-          }
-        }
-
-        // Tabla
-        if (section.tableHtml && section.tableHeaders) {
-          checkY();
-          const colW = contentW / section.tableHeaders.length;
-          doc.setFillColor(241,245,249);
-          doc.rect(margin, y, contentW, 7, 'F');
-          doc.setFontSize(9); doc.setFont('helvetica','bold');
-          doc.setTextColor(15,23,42);
-          section.tableHeaders.forEach((h, i) => { doc.text(h, margin + colW*i + 2, y + 5); });
-          y += 7;
-
-          const tmp  = document.createElement('tbody');
-          tmp.innerHTML = section.tableHtml;
-          const rows = tmp.querySelectorAll('tr');
-
-          rows.forEach((row, ri) => {
-            if (y + 7 > pageH - margin) { doc.addPage(); y = margin; }
-            const cells      = row.querySelectorAll('td');
-            const isTotalRow = row.style.borderTop || row.querySelector('td strong')?.textContent === 'Total';
-
-            if (ri % 2 === 0) { doc.setFillColor(248,250,252); doc.rect(margin, y, contentW, 7, 'F'); }
-            if (isTotalRow)   { doc.setFillColor(226,232,240); doc.rect(margin, y, contentW, 7, 'F'); }
-
-            doc.setFontSize(8.5);
-            doc.setFont('helvetica', isTotalRow ? 'bold' : 'normal');
-            doc.setTextColor(71,85,105);
-            cells.forEach((cell, i) => {
-              doc.text(cell.textContent.trim(), margin + colW*i + 2, y + 5, { maxWidth: colW - 4 });
-            });
-            y += 7;
-          });
-        }
-
-        y += 10;
-      }
-
-      doc.save(`dashboard_${periodoLabel.replace(/ /g,'_')}.pdf`);
-
-    } catch(e) {
+    } catch (e) {
       console.error('Error generando PDF:', e);
       alert('Hubo un error generando el PDF. Revisá la consola.');
     } finally {
