@@ -17,6 +17,7 @@
     .dim-row td { background: #f8fafc; color: #475569; }
   </style>
   <script src="../components/auth.js"></script>
+  <script src="../components/utils.js"></script>
   <script src="../components/period-selector.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
 </head>
@@ -51,38 +52,21 @@
     let _includePP = false;
 
     async function fetchDashboard(mes, año) {
-      try {
-        let url = '/facturas/dashboardGeneral';
-        const params = [];
-        if (mes) params.push(`mes=${mes}`);
-        else if (año) params.push(`año=${año}`);
-        if (params.length) url += '?' + params.join('&');
-        const res = await Auth.fetch(url);
-        if (!res.ok) throw new Error('Error fetching');
-        return (await res.json()).data;
-      } catch(e) {
-        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return null; }
-        console.error(e); return null;
-      }
-    }
-
-    function formatMoney(v) {
-      return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(v);
+      const res = await authFetch(`/facturas/dashboardGeneral${mes ? `?mes=${mes}` : año ? `?año=${año}` : ''}`);
+      if (!res) return null;
+      if (!res.ok) { console.error('Error fetching dashboard'); return null; }
+      return (await res.json()).data;
     }
 
     function render(d) {
-      // Dimensiones: filtrar PP si toggle desactivado
       let dimEntries = Object.entries(d.dimensiones || {});
-      if (!_includePP) dimEntries = dimEntries.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
+      if (!_includePP) dimEntries = dimEntries.filter(([k]) => !esPP(k));
 
-      // Calcular monto PP para restarlo del total cuando está excluido
-      const ppVal      = Object.entries(d.dimensiones || {}).reduce((acc, [k, v]) =>
-        acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
+      const ppVal         = calcularMontoPP(d.dimensiones);
       const totalMostrado = _includePP ? Number(d.totalVentas || 0) : Number(d.totalVentas || 0) - ppVal;
 
       document.getElementById('totalBruto').textContent = `Total: ${formatMoney(totalMostrado)}`;
 
-      const DIM_COLORS = ['#22c55e','#60a5fa','#f97316','#a78bfa','#f43f5e','#facc15','#34d399','#fb923c'];
       const labels = ['Total', ...dimEntries.map(([dim]) => dim), 'Promedio por factura', 'Cantidad facturas'];
       const values = [totalMostrado, ...dimEntries.map(([, v]) => v), d.promedioPorFactura, d.cantidadFacturas];
       const colors = ['#0ea5a4', ...dimEntries.map((_, i) => DIM_COLORS[i % DIM_COLORS.length]), '#f97316', '#60a5fa'];
@@ -132,7 +116,6 @@
       showPPToggle: true,
       onChange: async ({ mes, año, includePP }) => {
         _includePP = includePP;
-        // Si solo cambió el toggle, re-renderizar sin nuevo fetch
         if (mes === _lastMes && año === _lastAño && _lastData) {
           render(_lastData);
           return;

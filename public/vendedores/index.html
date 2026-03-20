@@ -12,6 +12,7 @@
     canvas { max-width:100%; height:420px }
   </style>
   <script src="../components/auth.js"></script>
+  <script src="../components/utils.js"></script>
   <script src="../components/period-selector.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
 </head>
@@ -30,37 +31,15 @@
   <script>
     if (!Auth.isAuthenticated()) { window.location.href = '/login'; }
 
-    async function fetchData(mes, año) {
-      try {
-        let url = '/facturas/ranking-vendedores';
-        const params = [];
-        if (mes) params.push(`mes=${mes}`);
-        else if (año) params.push(`año=${año}`);
-        if (params.length) url += '?' + params.join('&');
-        const res = await Auth.fetch(url);
-        const json = await res.json();
-        return json.data;
-      } catch(e) {
-        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return null; }
-        console.error(e); return null;
-      }
-    }
-
-    function formatMoney(v) {
-      return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(v);
-    }
-
     async function render(mes, año, includePP) {
-      const resultado = await fetchData(mes, año);
-      if (!resultado) return;
+      const res = await authFetch(`/facturas/ranking-vendedores${mes ? `?mes=${mes}` : año ? `?año=${año}` : ''}`);
+      if (!res) return;
+      const resultado = (await res.json()).data;
 
-      // Cada item tiene ingresos (total) e ingresospp (solo PP)
-      // Si excluimos PP, restamos ingresospp de ingresos
       let data = resultado.datos.map(d => ({
         ...d,
-        ingresos: includePP ? d.ingresos : (d.ingresos - (d.ingresospp || 0))
+        ingresos: includePP ? d.ingresos : (d.ingresos - (d.ingresospp || 0)),
       }));
-
       data.sort((a, b) => b.ingresos - a.ingresos);
 
       const totalIngresos = data.reduce((s, d) => s + d.ingresos, 0);
@@ -69,11 +48,11 @@
       document.getElementById('total').textContent =
         `Ingresos totales: ${formatMoney(totalIngresos)} · Ventas: ${totalVentas}`;
 
-      const ingresos = data.map(d => d.ingresos);
-      const ventas   = data.map(d => d.cantidadVentas);
-      const maxVentas   = Math.max(...ventas);
-      const maxIngresos = Math.max(...ingresos);
-      const ventasEscaladas = ventas.map(v => maxVentas ? (v / maxVentas) * maxIngresos : 0);
+      const ingresos         = data.map(d => d.ingresos);
+      const ventas           = data.map(d => d.cantidadVentas);
+      const maxVentas        = Math.max(...ventas);
+      const maxIngresos      = Math.max(...ingresos);
+      const ventasEscaladas  = ventas.map(v => maxVentas ? (v / maxVentas) * maxIngresos : 0);
 
       const ctx = document.getElementById('chart').getContext('2d');
       if (window._chart) window._chart.destroy();
@@ -83,9 +62,9 @@
         data: {
           labels: data.map(d => d.vendedor),
           datasets: [
-            { label: 'Ingresos',            data: ingresos,        backgroundColor: '#22c55e', yAxisID: 'y' },
-            { label: 'Cantidad de ventas',  data: ventasEscaladas, backgroundColor: '#60a5fa', yAxisID: 'y' }
-          ]
+            { label: 'Ingresos',           data: ingresos,       backgroundColor: '#22c55e', yAxisID: 'y' },
+            { label: 'Cantidad de ventas', data: ventasEscaladas, backgroundColor: '#60a5fa', yAxisID: 'y' },
+          ],
         },
         options: {
           responsive: true,
@@ -94,8 +73,8 @@
             y: {
               type: 'linear', position: 'left', beginAtZero: true,
               ticks: { callback: v => formatMoney(v) },
-              title: { display: true, text: 'Ingresos / Escala de ventas' }
-            }
+              title: { display: true, text: 'Ingresos / Escala de ventas' },
+            },
           },
           plugins: {
             tooltip: {
@@ -104,18 +83,18 @@
                   const idx = ctx.dataIndex;
                   if (ctx.dataset.label === 'Ingresos') return `Ingresos: ${formatMoney(ingresos[idx])}`;
                   return `Ventas: ${ventas[idx]} unidades`;
-                }
-              }
-            }
-          }
-        }
+                },
+              },
+            },
+          },
+        },
       });
     }
 
     const ps = new PeriodSelector({
       container:    document.getElementById('periodoContainer'),
       showPPToggle: true,
-      onChange: ({ mes, año, includePP }) => render(mes, año, includePP)
+      onChange: ({ mes, año, includePP }) => render(mes, año, includePP),
     });
     ps.init();
   </script>

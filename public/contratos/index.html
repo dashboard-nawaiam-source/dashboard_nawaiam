@@ -18,6 +18,7 @@
     .data-table td { padding: 8px; border: 1px solid #e2e8f0; font-size: 14px; }
   </style>
   <script src="../components/auth.js"></script>
+  <script src="../components/utils.js"></script>
   <script src="../components/period-selector.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
 </head>
@@ -59,60 +60,23 @@
   <script>
     if (!Auth.isAuthenticated()) { window.location.href = '/login'; }
 
-    async function fetchData(mes, año) {
-      try {
-        let url = '/facturas/contratos';
-        const params = [];
-        if (mes) params.push(`mes=${mes}`);
-        else if (año) params.push(`año=${año}`);
-        if (params.length) url += '?' + params.join('&');
-        const res = await Auth.fetch(url);
-        const json = await res.json();
-        return json.data;
-      } catch(e) {
-        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return null; }
-        console.error(e); return null;
-      }
-    }
-
     const COLORS = { B2B: '#0ea5a4', MARKETPLACE: '#f97316' };
-
-    function mapContractType(n) {
-      const c = n.trim().toLowerCase();
-      switch(c) {
-        case '0001': return 'Nuevos';
-        case '0002': return 'Recompra';
-        case 'orientación vocacional': return 'Orientación Vocacional';
-        case 'conócete': return 'Conócete';
-        default: return 'Otros';
-      }
-    }
-
-    function getSegmentationType(n) {
-      return (n === '0001' || n === '0002') ? 'B2B' : 'Marketplace';
-    }
 
     function getColorByContractType(tipo) {
       return (tipo === 'Nuevos' || tipo === 'Recompra') ? COLORS.B2B : COLORS.MARKETPLACE;
     }
 
-    function formatMoney(v) {
-      return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(v);
-    }
-
     async function render(mes, año, includePP) {
-      const resultado = await fetchData(mes, año);
-      if (!resultado) return;
-
-      const contratos = resultado.datos;
+      const res = await authFetch(`/facturas/contratos${mes ? `?mes=${mes}` : año ? `?año=${año}` : ''}`);
+      if (!res) return;
+      const resultado = (await res.json()).data;
 
       const tipoContratoMap = {};
       const segmentacionMap = { 'B2B': { cantidad: 0, totalVentas: 0 }, 'Marketplace': { cantidad: 0, totalVentas: 0 } };
 
-      contratos.forEach(c => {
-        const tipo = mapContractType(c.numeroContrato);
-        const seg  = getSegmentationType(c.numeroContrato);
-        // Usar totalVentasSinPP cuando PP está excluido
+      resultado.datos.forEach(c => {
+        const tipo  = mapContractType(c.numeroContrato);   // utils.js
+        const seg   = getSegmentationType(c.numeroContrato); // utils.js
         const monto = includePP ? c.totalVentas : c.totalVentasSinPP;
 
         if (!tipoContratoMap[tipo]) tipoContratoMap[tipo] = { totalVentas: 0, cantidad: 0 };
@@ -122,10 +86,9 @@
         segmentacionMap[seg].totalVentas  += monto;
       });
 
-      // Gráfico barras
-      const ctx1 = document.getElementById('chartTipoContrato').getContext('2d');
+      const ctx1    = document.getElementById('chartTipoContrato').getContext('2d');
       const ordenFijo = ['Nuevos', 'Recompra', 'Orientación Vocacional', 'Conócete', 'Otros'];
-      const labels = ordenFijo.filter(l => tipoContratoMap[l] !== undefined);
+      const labels  = ordenFijo.filter(l => tipoContratoMap[l] !== undefined);
 
       if (window._chart1) window._chart1.destroy();
       window._chart1 = new Chart(ctx1, {
@@ -134,9 +97,9 @@
           labels,
           datasets: [{
             label: 'Total de ventas',
-            data: labels.map(l => tipoContratoMap[l].totalVentas),
-            backgroundColor: labels.map(l => getColorByContractType(l))
-          }]
+            data:  labels.map(l => tipoContratoMap[l].totalVentas),
+            backgroundColor: labels.map(l => getColorByContractType(l)),
+          }],
         },
         options: {
           responsive: true,
@@ -145,12 +108,11 @@
           scales: { y: { beginAtZero: true } },
           plugins: {
             legend: { display: true },
-            tooltip: { callbacks: { label: ctx => formatMoney(ctx.raw) } }
-          }
-        }
+            tooltip: { callbacks: { label: ctx => formatMoney(ctx.raw) } },
+          },
+        },
       });
 
-      // Tabla
       const totalV = labels.reduce((s, l) => s + tipoContratoMap[l].totalVentas, 0);
       const totalC = labels.reduce((s, l) => s + tipoContratoMap[l].cantidad, 0);
       document.getElementById('tablaTipoContrato').innerHTML =
@@ -167,18 +129,17 @@
           <td><strong>${totalC}</strong></td>
         </tr>`;
 
-      // Gráfico circular
-      const ctx2 = document.getElementById('chartSegmentacion').getContext('2d');
-      if (window._chart2) window._chart2.destroy();
-      const segLabels   = Object.keys(segmentacionMap);
-      const segCants    = segLabels.map(k => segmentacionMap[k].cantidad);
-      const totalCant   = segCants.reduce((a, b) => a + b, 0);
+      const ctx2      = document.getElementById('chartSegmentacion').getContext('2d');
+      const segLabels = Object.keys(segmentacionMap);
+      const segCants  = segLabels.map(k => segmentacionMap[k].cantidad);
+      const totalCant = segCants.reduce((a, b) => a + b, 0);
 
+      if (window._chart2) window._chart2.destroy();
       window._chart2 = new Chart(ctx2, {
         type: 'doughnut',
         data: {
           labels: segLabels,
-          datasets: [{ data: segCants, backgroundColor: [COLORS.B2B, COLORS.MARKETPLACE] }]
+          datasets: [{ data: segCants, backgroundColor: [COLORS.B2B, COLORS.MARKETPLACE] }],
         },
         options: {
           responsive: true,
@@ -202,7 +163,7 @@
     const ps = new PeriodSelector({
       container:    document.getElementById('periodoContainer'),
       showPPToggle: true,
-      onChange: ({ mes, año, includePP }) => render(mes, año, includePP)
+      onChange: ({ mes, año, includePP }) => render(mes, año, includePP),
     });
     ps.init();
   </script>

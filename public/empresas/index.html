@@ -17,6 +17,7 @@
     .empresa-block canvas { max-width:100%; height:420px; margin-bottom:32px }
   </style>
   <script src="../components/auth.js"></script>
+  <script src="../components/utils.js"></script>
   <script src="../components/period-selector.js"></script>
   <script src="../components/nav-bar-custom.js" defer></script>
 </head>
@@ -48,47 +49,17 @@
   <script>
     if (!Auth.isAuthenticated()) { window.location.href = '/login'; }
 
-    async function fetchData(mes, año) {
-      try {
-        let url = '/facturas/empresas';
-        const params = [];
-        if (mes) params.push(`mes=${mes}`);
-        else if (año) params.push(`año=${año}`);
-        if (params.length) url += '?' + params.join('&');
-        const res = await Auth.fetch(url);
-        const json = await res.json();
-        return json.data;
-      } catch(e) {
-        if (e.message === 'AUTH_REQUIRED') { window.location.href = '/login'; return null; }
-        console.error(e); return null;
-      }
-    }
-
-    function mapEmpresa(empresa) {
-      const c = empresa?.trim().toLowerCase() || '';
-      switch(c) {
-        case 'nawaiam sa':          return 'Argentina';
-        case 'nawaiam españa':      return 'España';
-        case 'tu primera pega spa': return 'Chile';
-        default:                    return 'Otros';
-      }
-    }
-
-    function formatMoney(v) {
-      return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(v);
-    }
-
-    const DIM_COLORS = ['#22c55e', '#60a5fa', '#f97316', '#a78bfa', '#f43f5e', '#facc15', '#34d399', '#fb923c'];
     let chartInstances = [];
 
     async function render(mes, año, includePP) {
-      const resultado = await fetchData(mes, año);
-      if (!resultado) return;
+      const res = await authFetch(`/facturas/empresas${mes ? `?mes=${mes}` : año ? `?año=${año}` : ''}`);
+      if (!res) return;
+      const resultado = (await res.json()).data;
 
       chartInstances.forEach(c => c.destroy());
       chartInstances = [];
 
-      // Construir mapa por región
+      // Construir mapa por región usando mapEmpresa de utils.js
       const empresaMap = {};
       resultado.datos.forEach(f => {
         const region = mapEmpresa(f.empresa);
@@ -103,15 +74,9 @@
       const ordenFijo      = ['Argentina', 'España', 'Chile', 'Otros'];
       const sortedEmpresas = ordenFijo.filter(e => empresaMap[e]).map(e => [e, empresaMap[e]]);
 
-      // Helper: monto PP de un mapa de dimensiones
-      function ppDe(dimensiones) {
-        return Object.entries(dimensiones || {}).reduce((acc, [k, v]) =>
-          acc + ((k || '').trim().toLowerCase() === 'prueba piloto' ? Number(v) : 0), 0);
-      }
-
-      // Total general mostrado según toggle
+      // Total general usando calcularMontoPP de utils.js
       const totalVentasGlobal = sortedEmpresas.reduce((s, [, d]) => {
-        const pp = ppDe(d.dimensiones);
+        const pp = calcularMontoPP(d.dimensiones);
         return s + (includePP ? d.ingresos : d.ingresos - pp);
       }, 0);
       const totalFacturas = sortedEmpresas.reduce((s, [, d]) => s + d.ventas, 0);
@@ -123,11 +88,10 @@
       container.innerHTML = '';
 
       sortedEmpresas.forEach(([region, data]) => {
-        const pp = ppDe(data.dimensiones);
+        const pp = calcularMontoPP(data.dimensiones);
 
-        // Dimensiones a mostrar: si PP excluido, quitarlo
         let dims = Object.entries(data.dimensiones || {}).sort((a, b) => b[1] - a[1]);
-        if (!includePP) dims = dims.filter(([k]) => k.trim().toLowerCase() !== 'prueba piloto');
+        if (!includePP) dims = dims.filter(([k]) => !esPP(k));
 
         const totalMostrado = includePP ? Number(data.ingresos || 0) : Number(data.ingresos || 0) - pp;
 
@@ -140,44 +104,40 @@
         block.innerHTML = `<h3>${region}</h3><canvas id="chart-${region}"></canvas>`;
         container.appendChild(block);
 
-        const ctx = block.querySelector(`#chart-${region}`).getContext('2d');
+        const ctx      = block.querySelector(`#chart-${region}`).getContext('2d');
         const instance = new Chart(ctx, {
           type: 'bar',
-          data: {
-            labels,
-            datasets: [{ label: 'Ingresos', data: values, backgroundColor: colors }]
-          },
+          data: { labels, datasets: [{ label: 'Ingresos', data: values, backgroundColor: colors }] },
           options: {
             responsive: true,
             interaction: { mode: 'nearest', intersect: false },
             plugins: {
               legend: { display: false },
-              tooltip: { callbacks: { label: ctx => formatMoney(ctx.raw) } }
+              tooltip: { callbacks: { label: ctx => formatMoney(ctx.raw) } },
             },
-            scales: { y: { beginAtZero: true, ticks: { callback: v => formatMoney(v) } } }
-          }
+            scales: { y: { beginAtZero: true, ticks: { callback: v => formatMoney(v) } } },
+          },
         });
         chartInstances.push(instance);
       });
 
-      // Tabla
       document.getElementById('tablaEmpresas').innerHTML = sortedEmpresas.map(([empresa, data]) => {
-        const pp          = ppDe(data.dimensiones);
+        const pp            = calcularMontoPP(data.dimensiones);
         const totalMostrado = includePP ? Number(data.ingresos || 0) : Number(data.ingresos || 0) - pp;
         return `
-        <tr>
-          <td><strong>${empresa}</strong></td>
-          <td>${formatMoney(totalMostrado)}</td>
-          <td>${data.ventas}</td>
-          <td>${totalFacturas > 0 ? ((data.ventas / totalFacturas) * 100).toFixed(1) : 0}%</td>
-        </tr>`;
+          <tr>
+            <td><strong>${empresa}</strong></td>
+            <td>${formatMoney(totalMostrado)}</td>
+            <td>${data.ventas}</td>
+            <td>${totalFacturas > 0 ? ((data.ventas / totalFacturas) * 100).toFixed(1) : 0}%</td>
+          </tr>`;
       }).join('');
     }
 
     const ps = new PeriodSelector({
       container:    document.getElementById('periodoContainer'),
       showPPToggle: true,
-      onChange: ({ mes, año, includePP }) => render(mes, año, includePP)
+      onChange: ({ mes, año, includePP }) => render(mes, año, includePP),
     });
     ps.init();
   </script>
